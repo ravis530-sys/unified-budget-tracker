@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { TrendingUp, TrendingDown, Wallet, PiggyBank } from "lucide-react";
-import { format, startOfMonth, endOfMonth, subMonths } from "date-fns";
+import { format, startOfMonth, endOfMonth } from "date-fns";
 
 interface Stats {
   totalEarnings: number;
@@ -37,11 +37,6 @@ const DashboardStats = ({ scope }: DashboardStatsProps) => {
       const currentMonthStart = format(startOfMonth(new Date()), "yyyy-MM-dd");
       const currentMonthEnd = format(endOfMonth(new Date()), "yyyy-MM-dd");
 
-      // Previous month for earnings
-      const previousMonth = subMonths(new Date(), 1);
-      const previousMonthStart = format(startOfMonth(previousMonth), "yyyy-MM-dd");
-      const previousMonthEnd = format(endOfMonth(previousMonth), "yyyy-MM-dd");
-
       // Get household context for family scope
       let householdId: string | null = null;
       if (scope === "family") {
@@ -53,13 +48,12 @@ const DashboardStats = ({ scope }: DashboardStatsProps) => {
         householdId = membership?.household_id || null;
       }
 
-      // Fetch earnings from previous month
+      // Fetch ALL earnings from previous months (strictly before current month)
       let earningsQuery = supabase
         .from("transactions")
         .select("amount")
         .eq("type", "income")
-        .gte("transaction_date", previousMonthStart)
-        .lte("transaction_date", previousMonthEnd);
+        .lt("transaction_date", currentMonthStart);
 
       if (scope === "individual") {
         earningsQuery = earningsQuery.eq("user_id", user.id).is("household_id", null);
@@ -69,8 +63,23 @@ const DashboardStats = ({ scope }: DashboardStatsProps) => {
 
       const { data: earnings } = await earningsQuery;
 
+      // Fetch ALL expenses from previous months (strictly before current month)
+      let previousExpensesQuery = supabase
+        .from("transactions")
+        .select("amount")
+        .eq("type", "expense")
+        .lt("transaction_date", currentMonthStart);
+
+      if (scope === "individual") {
+        previousExpensesQuery = previousExpensesQuery.eq("user_id", user.id).is("household_id", null);
+      } else {
+        previousExpensesQuery = previousExpensesQuery.eq("household_id", householdId);
+      }
+
+      const { data: previousExpenses } = await previousExpensesQuery;
+
       // Fetch expenses from current month
-      let expensesQuery = supabase
+      let currentExpensesQuery = supabase
         .from("transactions")
         .select("amount")
         .eq("type", "expense")
@@ -78,21 +87,30 @@ const DashboardStats = ({ scope }: DashboardStatsProps) => {
         .lte("transaction_date", currentMonthEnd);
 
       if (scope === "individual") {
-        expensesQuery = expensesQuery.eq("user_id", user.id).is("household_id", null);
+        currentExpensesQuery = currentExpensesQuery.eq("user_id", user.id).is("household_id", null);
       } else {
-        expensesQuery = expensesQuery.eq("household_id", householdId);
+        currentExpensesQuery = currentExpensesQuery.eq("household_id", householdId);
       }
 
-      const { data: expenses } = await expensesQuery;
+      const { data: currentExpenses } = await currentExpensesQuery;
 
-      const totalEarnings = earnings?.reduce((sum, t) => sum + Number(t.amount), 0) || 0;
-      const totalExpenses = expenses?.reduce((sum, t) => sum + Number(t.amount), 0) || 0;
-      const netBalance = totalEarnings - totalExpenses;
-      const savingsRate = totalEarnings > 0 ? (netBalance / totalEarnings) * 100 : 0;
+      const totalPreviousEarnings = earnings?.reduce((sum, t) => sum + Number(t.amount), 0) || 0;
+      const totalPreviousExpenses = previousExpenses?.reduce((sum, t) => sum + Number(t.amount), 0) || 0;
+      
+      // Total Saved = Total Previous Earnings - Total Previous Expenses
+      const totalSaved = totalPreviousEarnings - totalPreviousExpenses;
+      
+      const totalCurrentExpenses = currentExpenses?.reduce((sum, t) => sum + Number(t.amount), 0) || 0;
+      
+      // Net Balance = Total Saved - Current Month Expenses
+      const netBalance = totalSaved - totalCurrentExpenses;
+      
+      // Savings Rate = (Net Balance / Total Saved) * 100 (percentage of savings remaining)
+      const savingsRate = totalSaved > 0 ? (netBalance / totalSaved) * 100 : 0;
 
       setStats({
-        totalEarnings,
-        totalExpenses,
+        totalEarnings: totalSaved, // Mapping totalSaved to totalEarnings for state
+        totalExpenses: totalCurrentExpenses,
         netBalance,
         savingsRate,
       });
@@ -133,7 +151,7 @@ const DashboardStats = ({ scope }: DashboardStatsProps) => {
       <Card>
         <CardHeader className="flex flex-row items-center justify-between pb-2">
           <CardTitle className="text-sm font-medium text-muted-foreground">
-            Total Earnings
+            Total Saved
           </CardTitle>
           <TrendingUp className="h-4 w-4 text-success" />
         </CardHeader>
@@ -141,7 +159,7 @@ const DashboardStats = ({ scope }: DashboardStatsProps) => {
           <div className="text-2xl font-bold text-success">
             {formatCurrency(stats.totalEarnings)}
           </div>
-          <p className="text-xs text-muted-foreground mt-1">Previous month</p>
+          <p className="text-xs text-muted-foreground mt-1">Overall previous months</p>
         </CardContent>
       </Card>
 
@@ -171,7 +189,7 @@ const DashboardStats = ({ scope }: DashboardStatsProps) => {
           <div className={`text-2xl font-bold ${stats.netBalance >= 0 ? "text-success" : "text-destructive"}`}>
             {formatCurrency(stats.netBalance)}
           </div>
-          <p className="text-xs text-muted-foreground mt-1">Earnings - Expenses</p>
+          <p className="text-xs text-muted-foreground mt-1">Saved - Expenses</p>
         </CardContent>
       </Card>
 
@@ -186,7 +204,7 @@ const DashboardStats = ({ scope }: DashboardStatsProps) => {
           <div className="text-2xl font-bold text-accent">
             {stats.savingsRate.toFixed(1)}%
           </div>
-          <p className="text-xs text-muted-foreground mt-1">Of total earnings</p>
+          <p className="text-xs text-muted-foreground mt-1">Of total saved</p>
         </CardContent>
       </Card>
     </div>

@@ -9,58 +9,30 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { CalendarIcon } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
-import { startOfMonth, format, addMonths } from "date-fns";
+import { startOfMonth, format } from "date-fns";
 import { cn } from "@/lib/utils";
 
 interface AddBudgetDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onSuccess: () => void;
-  selectedMonth: Date;
   scope: "individual" | "family";
+  selectedMonth?: Date; // Optional now, or removed if unused
 }
 
-const INCOME_CATEGORIES = [
-  "Salary",
-  "Rental Income",
-  "Fixed Deposits (FD)",
-  "Mutual Funds (MF)",
-  "Dividends",
-  "Bonds",
-  "Other",
-];
+import { INCOME_CATEGORIES, EXPENSE_CATEGORIES } from "@/lib/constants";
 
-const EXPENSE_CATEGORIES = [
-  "Groceries",
-  "Vegetables",
-  "School Fees",
-  "Travel",
-  "Mobile Bill",
-  "Utilities",
-  "Healthcare",
-  "Entertainment",
-  "EMI/Loans",
-  "Insurance",
-  "Other",
-];
-
-const INTERVALS = [
-  { value: "one-time", label: "One-time" },
-  { value: "weekly", label: "Weekly" },
-  { value: "monthly", label: "Monthly" },
-  { value: "quarterly", label: "Quarterly" },
-  { value: "half-yearly", label: "Half Yearly" },
-  { value: "yearly", label: "Yearly" },
-];
 
 const AddBudgetDialog = ({ open, onOpenChange, onSuccess, selectedMonth, scope }: AddBudgetDialogProps) => {
   const [type, setType] = useState<"income" | "expense">("expense");
   const [category, setCategory] = useState("");
   const [amount, setAmount] = useState("");
-  const [interval, setInterval] = useState("monthly");
-  const [startDate, setStartDate] = useState<Date>(new Date());
+  const [startDate, setStartDate] = useState<Date>(selectedMonth || new Date());
   const [endDate, setEndDate] = useState<Date | undefined>();
   const [loading, setLoading] = useState(false);
+
+  // Update startDate when selectedMonth changes if dialog is closed/reset, 
+  // but better to let user pick. We initialize with selectedMonth start.
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -81,76 +53,29 @@ const AddBudgetDialog = ({ open, onOpenChange, onSuccess, selectedMonth, scope }
         householdId = membership?.household_id || null;
       }
 
-      const monthStart = startOfMonth(selectedMonth);
+      // We no longer generate multiple entries. We create ONE entry with a date range.
+      // We still use month_year as a reference point (maybe start date's month),
+      // but the filters will use start_date and end_date.
 
-      // Calculate how many entries to create based on interval
-      // For now, we'll project out 1 year (12 months)
-      const entries = [];
-      let currentMonth = monthStart;
-      let monthsToAdd = 0;
+      const entry = {
+        user_id: user.id,
+        household_id: householdId,
+        month_year: format(startDate, 'yyyy-MM-dd'), // Keep for schema compliance, but rely on start_date
+        category,
+        planned_amount: parseFloat(amount),
+        type,
+        interval: "pending", // Default status for Goals is 'pending'
+        start_date: format(startDate, 'yyyy-MM-dd'),
+        end_date: endDate ? format(endDate, 'yyyy-MM-dd') : null,
+      };
 
-      switch (interval) {
-        case "monthly":
-          monthsToAdd = 1;
-          break;
-        case "quarterly":
-          monthsToAdd = 3;
-          break;
-        case "half-yearly":
-          monthsToAdd = 6;
-          break;
-        case "yearly":
-          monthsToAdd = 12;
-          break;
-        default: // one-time
-          monthsToAdd = 0;
-      }
-
-      if (monthsToAdd === 0) {
-        // One-time budget
-        entries.push({
-          user_id: user.id,
-          household_id: householdId,
-          month_year: monthStart.toISOString().split('T')[0],
-          category,
-          planned_amount: parseFloat(amount),
-          type,
-          interval: "one-time", // Store as one-time so they are independent
-          start_date: startDate.toISOString().split('T')[0],
-          end_date: endDate ? endDate.toISOString().split('T')[0] : null,
-        });
-      } else {
-        // Generate entries for the next 12 months
-        // We stop if we exceed the end date (if provided)
-        for (let i = 0; i < 12; i += monthsToAdd) {
-          const entryDate = addMonths(monthStart, i);
-
-          if (endDate && entryDate > endDate) break;
-
-          entries.push({
-            user_id: user.id,
-            household_id: householdId,
-            month_year: entryDate.toISOString().split('T')[0],
-            category,
-            planned_amount: parseFloat(amount),
-            type,
-            interval: "one-time", // Store as one-time so they are independent
-            start_date: entryDate.toISOString().split('T')[0],
-            end_date: endDate ? endDate.toISOString().split('T')[0] : null,
-          });
-        }
-      }
-
-      const { error } = await supabase.from("monthly_budgets").upsert(entries);
+      const { error } = await supabase.from("monthly_budgets").insert([entry]);
 
       if (error) throw error;
 
       toast.success("Budget saved");
       setCategory("");
       setAmount("");
-      setInterval("monthly");
-      setInterval("monthly");
-      setStartDate(new Date());
       setEndDate(undefined);
       onSuccess();
     } catch (error: any) {
@@ -203,7 +128,7 @@ const AddBudgetDialog = ({ open, onOpenChange, onSuccess, selectedMonth, scope }
             <Input
               id="amount"
               type="number"
-              step="0.01"
+              step="any"
               value={amount}
               onChange={(e) => setAmount(e.target.value)}
               placeholder="0.00"
@@ -212,23 +137,7 @@ const AddBudgetDialog = ({ open, onOpenChange, onSuccess, selectedMonth, scope }
           </div>
 
           <div className="space-y-2">
-            <Label>Interval</Label>
-            <Select value={interval} onValueChange={setInterval}>
-              <SelectTrigger>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {INTERVALS.map((int) => (
-                  <SelectItem key={int.value} value={int.value}>
-                    {int.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-
-          <div className="space-y-2">
-            <Label>Expected Date (Pay/Bill Date)</Label>
+            <Label>Start Date</Label>
             <Popover>
               <PopoverTrigger asChild>
                 <Button
@@ -279,9 +188,8 @@ const AddBudgetDialog = ({ open, onOpenChange, onSuccess, selectedMonth, scope }
                 />
               </PopoverContent>
             </Popover>
+            <p className="text-xs text-muted-foreground">Leave empty if this is a one-time or ongoing budget without a fixed end.</p>
           </div>
-
-
 
           <Button type="submit" className="w-full" disabled={loading}>
             {loading ? "Saving..." : "Save Budget"}

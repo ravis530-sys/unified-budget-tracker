@@ -12,6 +12,7 @@ import TransactionList from "@/components/TransactionList";
 import DashboardStats from "@/components/DashboardStats";
 import ExpenseChart from "@/components/ExpenseChart";
 import BudgetAllocationBreakdown from "@/components/BudgetAllocationBreakdown";
+import BudgetMonthSelector from "@/components/BudgetMonthSelector";
 import HouseholdSetupDialog from "@/components/HouseholdSetupDialog";
 import { useHousehold } from "@/hooks/useHousehold";
 
@@ -23,6 +24,7 @@ const Dashboard = () => {
   const [refreshKey, setRefreshKey] = useState(0);
   const [scope, setScope] = useState<"individual" | "family">("individual");
   const [showHouseholdSetup, setShowHouseholdSetup] = useState(false);
+  const [selectedMonth, setSelectedMonth] = useState(new Date());
   const navigate = useNavigate();
   const { household, createHousehold, refreshHousehold } = useHousehold();
 
@@ -115,15 +117,21 @@ const Dashboard = () => {
       </header>
 
       <main className="container mx-auto px-4 py-6 space-y-6">
-        <div className="flex items-center justify-between">
+        <div className="flex flex-col md:flex-row items-center justify-between gap-4">
           <div>
             <h2 className="text-2xl font-bold">Dashboard</h2>
             <p className="text-muted-foreground">Overview of your finances</p>
           </div>
-          <Button onClick={() => setShowAddDialog(true)}>
-            <Plus className="h-4 w-4 mr-2" />
-            Add Transaction
-          </Button>
+          <div className="flex items-center gap-4">
+            <BudgetMonthSelector
+              selectedMonth={selectedMonth}
+              onMonthChange={setSelectedMonth}
+            />
+            <Button onClick={() => setShowAddDialog(true)}>
+              <Plus className="h-4 w-4 mr-2" />
+              Add Transaction
+            </Button>
+          </div>
         </div>
 
         <Tabs value={scope} onValueChange={handleScopeChange} className="w-full">
@@ -133,18 +141,18 @@ const Dashboard = () => {
           </TabsList>
 
           <TabsContent value={scope} className="space-y-6 mt-6">
-            <DashboardStats key={`${refreshKey}-${scope}`} scope={scope} />
+            <DashboardStats key={`${refreshKey}-${scope}-${selectedMonth.toISOString()}`} scope={scope} selectedMonth={selectedMonth} />
 
             <div className="grid gap-6 md:grid-cols-2">
               <Card>
                 <CardHeader>
                   <CardTitle>Budget Overview</CardTitle>
-                  <CardDescription>Current month allocations</CardDescription>
+                  <CardDescription>Allocations for {selectedMonth.toLocaleString('default', { month: 'long', year: 'numeric' })}</CardDescription>
                 </CardHeader>
                 <CardContent>
                   <BudgetAllocationBreakdown
-                    key={`budget-${refreshKey}-${scope}`}
-                    selectedMonth={new Date()}
+                    key={`budget-${refreshKey}-${scope}-${selectedMonth.toISOString()}`}
+                    selectedMonth={selectedMonth}
                     type="expense"
                     scope={scope}
                   />
@@ -157,20 +165,46 @@ const Dashboard = () => {
                   <CardDescription>Distribution by category</CardDescription>
                 </CardHeader>
                 <CardContent>
-                  <ExpenseChart key={`${refreshKey}-${scope}`} scope={scope} />
+                  <ExpenseChart key={`${refreshKey}-${scope}-${selectedMonth.toISOString()}`} scope={scope} selectedMonth={selectedMonth} />
                 </CardContent>
               </Card>
             </div>
 
-            <Card>
-              <CardHeader>
-                <CardTitle>Recent Transactions</CardTitle>
-                <CardDescription>Your latest activity</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <TransactionList key={`${refreshKey}-${scope}`} limit={5} onEdit={handleEditTransaction} scope={scope} />
-              </CardContent>
-            </Card>
+
+
+            <div className="grid gap-6 md:grid-cols-2">
+              <Card>
+                <CardHeader>
+                  <CardTitle>Monthly Earnings</CardTitle>
+                  <CardDescription>Income details for {selectedMonth.toLocaleString('default', { month: 'long', year: 'numeric' })}</CardDescription>
+                </CardHeader>
+                <CardContent className="max-h-[400px] overflow-y-auto pr-2">
+                  <TransactionList
+                    key={`income-list-${refreshKey}-${scope}`}
+                    type="income"
+                    onEdit={handleEditTransaction}
+                    scope={scope}
+                    selectedMonth={selectedMonth}
+                  />
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader>
+                  <CardTitle>Monthly Expenses</CardTitle>
+                  <CardDescription>Expense details for {selectedMonth.toLocaleString('default', { month: 'long', year: 'numeric' })}</CardDescription>
+                </CardHeader>
+                <CardContent className="max-h-[400px] overflow-y-auto pr-2">
+                  <TransactionList
+                    key={`expense-list-${refreshKey}-${scope}`}
+                    type="expense"
+                    onEdit={handleEditTransaction}
+                    scope={scope}
+                    selectedMonth={selectedMonth}
+                  />
+                </CardContent>
+              </Card>
+            </div>
           </TabsContent>
         </Tabs>
       </main>

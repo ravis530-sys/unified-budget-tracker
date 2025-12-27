@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
-import { format } from "date-fns";
+import { format, startOfMonth, endOfMonth } from "date-fns";
 import { TrendingUp, TrendingDown, Pencil, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
@@ -23,6 +23,7 @@ interface Transaction {
   transaction_date: string;
   interval: string;
   remarks: string | null;
+  name?: string | null;
   user_id: string;
   profiles?: {
     full_name: string | null;
@@ -33,9 +34,11 @@ interface TransactionListProps {
   limit?: number;
   onEdit?: (transaction: Transaction) => void;
   scope: "individual" | "family";
+  selectedMonth?: Date;
+  type?: "income" | "expense";
 }
 
-const TransactionList = ({ limit, onEdit, scope }: TransactionListProps) => {
+const TransactionList = ({ limit, onEdit, scope, selectedMonth, type }: TransactionListProps) => {
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [loading, setLoading] = useState(true);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
@@ -43,7 +46,7 @@ const TransactionList = ({ limit, onEdit, scope }: TransactionListProps) => {
 
   useEffect(() => {
     fetchTransactions();
-  }, [scope]);
+  }, [scope, selectedMonth, type]);
 
   const fetchTransactions = async () => {
     try {
@@ -66,6 +69,16 @@ const TransactionList = ({ limit, onEdit, scope }: TransactionListProps) => {
         .from("transactions")
         .select("*")
         .order("transaction_date", { ascending: false });
+
+      if (type) {
+        query = query.eq("type", type);
+      }
+
+      if (selectedMonth) {
+        const startDate = format(startOfMonth(selectedMonth), "yyyy-MM-dd");
+        const endDate = format(endOfMonth(selectedMonth), "yyyy-MM-dd");
+        query = query.gte("transaction_date", startDate).lte("transaction_date", endDate);
+      }
 
       if (scope === "individual") {
         query = query.eq("user_id", user.id).is("household_id", null);
@@ -106,7 +119,7 @@ const TransactionList = ({ limit, onEdit, scope }: TransactionListProps) => {
     return new Intl.NumberFormat("en-IN", {
       style: "currency",
       currency: "INR",
-      maximumFractionDigits: 0,
+      maximumFractionDigits: 4,
     }).format(amount);
   };
 
@@ -187,6 +200,9 @@ const TransactionList = ({ limit, onEdit, scope }: TransactionListProps) => {
                 {format(new Date(transaction.transaction_date), "MMM d, yyyy")} • {transaction.interval}
                 {transaction.profiles?.full_name && (
                   <> • {transaction.profiles.full_name}</>
+                )}
+                {transaction.name && (
+                  <> • {transaction.name}</>
                 )}
               </p>
             </div>

@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
-import { startOfMonth, endOfMonth } from "date-fns";
+import { startOfMonth, endOfMonth, format } from "date-fns";
 
 interface BudgetAllocation {
   category: string;
@@ -43,12 +43,15 @@ const BudgetAllocationBreakdown = ({ selectedMonth, type, scope }: BudgetAllocat
         householdId = membership?.household_id || null;
       }
 
-      // Fetch budgets
+      const monthStartStr = format(monthStart, 'yyyy-MM-dd');
+      const monthEndStr = format(monthEnd, 'yyyy-MM-dd');
+
+      // Fetch budgets query
       let budgetQuery = supabase
         .from("monthly_budgets")
-        .select("category, planned_amount")
+        .select("category, planned_amount, start_date, end_date")
         .eq("type", type)
-        .eq("month_year", monthStart.toISOString().split('T')[0]);
+        .lte("start_date", monthEndStr);
 
       if (scope === "individual") {
         budgetQuery = budgetQuery.eq("user_id", user.id).is("household_id", null);
@@ -56,7 +59,13 @@ const BudgetAllocationBreakdown = ({ selectedMonth, type, scope }: BudgetAllocat
         budgetQuery = budgetQuery.eq("household_id", householdId);
       }
 
-      const { data: budgets } = await budgetQuery;
+      const { data: rawBudgets } = await budgetQuery;
+
+      // Filter for overlap in client
+      const budgets = (rawBudgets || []).filter(budget => {
+        if (!budget.end_date) return true;
+        return budget.end_date >= monthStartStr;
+      });
 
       // Fetch actual transactions
       let transactionQuery = supabase

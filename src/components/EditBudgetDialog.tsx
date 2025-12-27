@@ -32,20 +32,21 @@ interface EditBudgetDialogProps {
     type: string;
     interval: string;
     start_date: string;
+    end_date?: string | null;
   } | null;
 }
 
 const EditBudgetDialog = ({ open, onOpenChange, onSuccess, budget }: EditBudgetDialogProps) => {
   const [amount, setAmount] = useState("");
-  const [interval, setInterval] = useState("monthly");
   const [startDate, setStartDate] = useState<Date>(new Date());
+  const [endDate, setEndDate] = useState<Date | undefined>();
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
     if (budget) {
       setAmount(budget.planned_amount.toString());
-      setInterval(budget.interval || "monthly");
       setStartDate(budget.start_date ? new Date(budget.start_date) : new Date());
+      setEndDate(budget.end_date ? new Date(budget.end_date) : undefined);
     }
   }, [budget]);
 
@@ -60,8 +61,8 @@ const EditBudgetDialog = ({ open, onOpenChange, onSuccess, budget }: EditBudgetD
         .from("monthly_budgets")
         .update({
           planned_amount: parseFloat(amount),
-          interval,
-          start_date: startDate.toISOString().split('T')[0],
+          start_date: format(startDate, 'yyyy-MM-dd'),
+          end_date: endDate ? format(endDate, 'yyyy-MM-dd') : null,
         })
         .eq("id", budget.id);
 
@@ -105,7 +106,7 @@ const EditBudgetDialog = ({ open, onOpenChange, onSuccess, budget }: EditBudgetD
             <Input
               id="amount"
               type="number"
-              step="0.01"
+              step="any"
               value={amount}
               onChange={(e) => setAmount(e.target.value)}
               placeholder="0.00"
@@ -114,23 +115,7 @@ const EditBudgetDialog = ({ open, onOpenChange, onSuccess, budget }: EditBudgetD
           </div>
 
           <div className="space-y-2">
-            <Label>Interval</Label>
-            <Select value={interval} onValueChange={setInterval}>
-              <SelectTrigger>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {INTERVALS.map((int) => (
-                  <SelectItem key={int.value} value={int.value}>
-                    {int.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-
-          <div className="space-y-2">
-            <Label>Expected Date</Label>
+            <Label>Start Date</Label>
             <Popover>
               <PopoverTrigger asChild>
                 <Button
@@ -156,7 +141,32 @@ const EditBudgetDialog = ({ open, onOpenChange, onSuccess, budget }: EditBudgetD
             </Popover>
           </div>
 
-
+          <div className="space-y-2">
+            <Label>End Date (Optional)</Label>
+            <Popover>
+              <PopoverTrigger asChild>
+                <Button
+                  variant="outline"
+                  className={cn(
+                    "w-full justify-start text-left font-normal",
+                    !endDate && "text-muted-foreground"
+                  )}
+                >
+                  <CalendarIcon className="mr-2 h-4 w-4" />
+                  {endDate ? format(endDate, "PPP") : <span>Pick a date</span>}
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-auto p-0" align="start">
+                <Calendar
+                  mode="single"
+                  selected={endDate}
+                  onSelect={setEndDate}
+                  initialFocus
+                  className="pointer-events-auto"
+                />
+              </PopoverContent>
+            </Popover>
+          </div>
 
           <Button type="submit" className="w-full" disabled={loading}>
             {loading ? "Updating..." : "Update Budget"}

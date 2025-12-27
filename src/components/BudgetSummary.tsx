@@ -47,11 +47,14 @@ const BudgetSummary = ({ selectedMonth, scope }: BudgetSummaryProps) => {
         householdId = membership?.household_id || null;
       }
 
-      // Fetch planned budgets
+      // Fetch planned budgets with overlap logic
+      const monthStartStr = format(monthStart, 'yyyy-MM-dd');
+      const monthEndStr = format(monthEnd, 'yyyy-MM-dd');
+
       let budgetQuery = supabase
         .from("monthly_budgets")
-        .select("type, planned_amount, category")
-        .eq("month_year", monthStart.toISOString().split('T')[0]);
+        .select("type, planned_amount, category, start_date, end_date")
+        .lte("start_date", monthEndStr);
 
       if (scope === "individual") {
         budgetQuery = budgetQuery.eq("user_id", user.id).is("household_id", null);
@@ -59,7 +62,12 @@ const BudgetSummary = ({ selectedMonth, scope }: BudgetSummaryProps) => {
         budgetQuery = budgetQuery.eq("household_id", householdId);
       }
 
-      const { data: budgets } = await budgetQuery;
+      const { data: rawBudgets } = await budgetQuery;
+
+      const budgets = (rawBudgets || []).filter(budget => {
+        if (!budget.end_date) return true;
+        return budget.end_date >= monthStartStr;
+      });
 
       // Fetch actual transactions for current month
       let transactionQuery = supabase

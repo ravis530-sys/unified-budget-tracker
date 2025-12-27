@@ -4,21 +4,14 @@ import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { ArrowLeft, Plus } from "lucide-react";
-import { toast } from "sonner";
-import BudgetMonthSelector from "@/components/BudgetMonthSelector";
+import { ArrowLeft, Plus, Target } from "lucide-react";
 import BudgetCategoryList from "@/components/BudgetCategoryList";
 import AddBudgetDialog from "@/components/AddBudgetDialog";
-import BudgetSummary from "@/components/BudgetSummary";
-import BudgetAllocationBreakdown from "@/components/BudgetAllocationBreakdown";
-import BudgetIncomeAllocation from "@/components/BudgetIncomeAllocation";
 import HouseholdSetupDialog from "@/components/HouseholdSetupDialog";
 import { useHousehold } from "@/hooks/useHousehold";
-import { format } from "date-fns";
 
 const BudgetPlanning = () => {
   const navigate = useNavigate();
-  const [selectedMonth, setSelectedMonth] = useState(new Date());
   const [showAddDialog, setShowAddDialog] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
   const [scope, setScope] = useState<"individual" | "family">("individual");
@@ -62,21 +55,21 @@ const BudgetPlanning = () => {
             <ArrowLeft className="h-5 w-5" />
           </Button>
           <div>
-            <h1 className="text-xl font-bold">Budget Planning</h1>
-            <p className="text-xs text-muted-foreground">Plan your monthly budget</p>
+            <h1 className="text-xl font-bold">Goal Planning</h1>
+            <p className="text-xs text-muted-foreground">Manage your income and expense goals</p>
           </div>
         </div>
       </header>
 
       <main className="container mx-auto px-4 py-6 space-y-6">
         <div className="flex items-center justify-between">
-          <BudgetMonthSelector
-            selectedMonth={selectedMonth}
-            onMonthChange={setSelectedMonth}
-          />
+          <div className="flex items-center gap-2">
+            <Target className="h-5 w-5 text-primary" />
+            <h2 className="text-lg font-semibold">Your Goals</h2>
+          </div>
           <Button onClick={() => setShowAddDialog(true)}>
             <Plus className="h-4 w-4 mr-2" />
-            Add Budget
+            Add Goal
           </Button>
         </div>
 
@@ -87,25 +80,19 @@ const BudgetPlanning = () => {
           </TabsList>
 
           <TabsContent value={scope} className="space-y-6 mt-6">
-            <BudgetSummary
-              key={`${refreshKey}-${scope}`}
-              selectedMonth={selectedMonth}
-              scope={scope}
-            />
-
             <div className="grid gap-6 md:grid-cols-2">
               <Card>
                 <CardHeader>
-                  <CardTitle>Planned Income</CardTitle>
+                  <CardTitle>Income Goals</CardTitle>
                   <CardDescription>
-                    Expected earnings for {format(selectedMonth, "MMMM yyyy")}
+                    Planned income sources
                   </CardDescription>
                 </CardHeader>
                 <CardContent>
                   <BudgetCategoryList
                     key={`income-${refreshKey}-${scope}`}
                     type="income"
-                    selectedMonth={selectedMonth}
+                    viewMode="goals"
                     onUpdate={() => setRefreshKey(prev => prev + 1)}
                     scope={scope}
                   />
@@ -114,70 +101,17 @@ const BudgetPlanning = () => {
 
               <Card>
                 <CardHeader>
-                  <CardTitle>Planned Expenses</CardTitle>
+                  <CardTitle>Expense Goals</CardTitle>
                   <CardDescription>
-                    Budgeted spending for {format(selectedMonth, "MMMM yyyy")}
+                    Planned expense limits
                   </CardDescription>
                 </CardHeader>
                 <CardContent>
                   <BudgetCategoryList
                     key={`expense-${refreshKey}-${scope}`}
                     type="expense"
-                    selectedMonth={selectedMonth}
+                    viewMode="goals"
                     onUpdate={() => setRefreshKey(prev => prev + 1)}
-                    scope={scope}
-                  />
-                </CardContent>
-              </Card>
-            </div>
-
-            <Card>
-              <CardHeader>
-                <CardTitle>Budget Allocation</CardTitle>
-                <CardDescription>
-                  Allocate your planned income to expense categories
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <BudgetIncomeAllocation
-                  key={`allocation-${refreshKey}-${scope}`}
-                  selectedMonth={selectedMonth}
-                  onUpdate={() => setRefreshKey(prev => prev + 1)}
-                  scope={scope}
-                />
-              </CardContent>
-            </Card>
-
-            <div className="grid gap-6 md:grid-cols-2">
-              <Card>
-                <CardHeader>
-                  <CardTitle>Income Breakdown</CardTitle>
-                  <CardDescription>
-                    Planned vs Actual for {format(selectedMonth, "MMMM yyyy")}
-                  </CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <BudgetAllocationBreakdown
-                    key={`income-breakdown-${refreshKey}-${scope}`}
-                    selectedMonth={selectedMonth}
-                    type="income"
-                    scope={scope}
-                  />
-                </CardContent>
-              </Card>
-
-              <Card>
-                <CardHeader>
-                  <CardTitle>Expense Breakdown</CardTitle>
-                  <CardDescription>
-                    Planned vs Actual for {format(selectedMonth, "MMMM yyyy")}
-                  </CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <BudgetAllocationBreakdown
-                    key={`expense-breakdown-${refreshKey}-${scope}`}
-                    selectedMonth={selectedMonth}
-                    type="expense"
                     scope={scope}
                   />
                 </CardContent>
@@ -191,7 +125,6 @@ const BudgetPlanning = () => {
         open={showAddDialog}
         onOpenChange={setShowAddDialog}
         onSuccess={handleBudgetAdded}
-        selectedMonth={selectedMonth}
         scope={scope}
       />
 

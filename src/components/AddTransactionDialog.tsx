@@ -10,37 +10,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { toast } from "sonner";
 import { format } from "date-fns";
 
-const INCOME_CATEGORIES = [
-  "Salary",
-  "Rental Income",
-  "Fixed Deposits (FD)",
-  "Mutual Funds (MF)",
-  "Dividends",
-  "Bonds",
-  "Other",
-];
+import { INCOME_CATEGORIES, EXPENSE_CATEGORIES, INTERVALS } from "@/lib/constants";
 
-const EXPENSE_CATEGORIES = [
-  "Groceries",
-  "Vegetables",
-  "School Fees",
-  "Travel",
-  "Mobile Bill",
-  "Utilities",
-  "Healthcare",
-  "Entertainment",
-  "EMI/Loans",
-  "Insurance",
-  "Other",
-];
-
-const INTERVALS = [
-  { value: "one-time", label: "One-time" },
-  { value: "monthly", label: "Monthly" },
-  { value: "quarterly", label: "Quarterly" },
-  { value: "half-yearly", label: "Half-yearly" },
-  { value: "yearly", label: "Yearly" },
-];
 
 interface Transaction {
   id: string;
@@ -50,6 +21,7 @@ interface Transaction {
   transaction_date: string;
   interval: string;
   remarks: string | null;
+  name?: string | null;
 }
 
 interface AddTransactionDialogProps {
@@ -67,6 +39,7 @@ const AddTransactionDialog = ({ open, onOpenChange, onSuccess, transaction, scop
   const [date, setDate] = useState(transaction?.transaction_date || format(new Date(), "yyyy-MM-dd"));
   const [interval, setInterval] = useState(transaction?.interval || "one-time");
   const [remarks, setRemarks] = useState(transaction?.remarks || "");
+  const [name, setName] = useState(transaction?.name || "");
   const [loading, setLoading] = useState(false);
   const [budgetCategories, setBudgetCategories] = useState<string[]>([]);
   const [budgetRemaining, setBudgetRemaining] = useState<Record<string, number>>({});
@@ -132,6 +105,7 @@ const AddTransactionDialog = ({ open, onOpenChange, onSuccess, transaction, scop
       setDate(transaction.transaction_date);
       setInterval(transaction.interval);
       setRemarks(transaction.remarks || "");
+      setName(transaction.name || "");
     } else {
       // Reset form when transaction is null (add mode)
       setType("income");
@@ -140,6 +114,7 @@ const AddTransactionDialog = ({ open, onOpenChange, onSuccess, transaction, scop
       setDate(format(new Date(), "yyyy-MM-dd"));
       setInterval("one-time");
       setRemarks("");
+      setName("");
     }
   }, [transaction]);
 
@@ -184,6 +159,7 @@ const AddTransactionDialog = ({ open, onOpenChange, onSuccess, transaction, scop
             transaction_date: date,
             interval,
             remarks: remarks || null,
+            name: name || null,
           })
           .eq("id", transaction.id);
 
@@ -200,6 +176,7 @@ const AddTransactionDialog = ({ open, onOpenChange, onSuccess, transaction, scop
           transaction_date: date,
           interval,
           remarks: remarks || null,
+          name: name || null,
         });
 
         if (error) throw error;
@@ -212,6 +189,7 @@ const AddTransactionDialog = ({ open, onOpenChange, onSuccess, transaction, scop
       setDate(format(new Date(), "yyyy-MM-dd"));
       setInterval("one-time");
       setRemarks("");
+      setName("");
 
       onSuccess();
     } catch (error: any) {
@@ -277,12 +255,24 @@ const AddTransactionDialog = ({ open, onOpenChange, onSuccess, transaction, scop
                 </Select>
               </div>
 
+              {type === "income" && (
+                <div className="space-y-2">
+                  <Label htmlFor="name">Name (Optional)</Label>
+                  <Input
+                    id="name"
+                    placeholder="e.g. Bonus, Freelance Project"
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
+                  />
+                </div>
+              )}
+
               <div className="space-y-2">
                 <Label htmlFor="amount">Amount (INR)</Label>
                 <Input
                   id="amount"
                   type="number"
-                  step="0.01"
+                  step="any"
                   placeholder="0.00"
                   value={amount}
                   onChange={(e) => setAmount(e.target.value)}

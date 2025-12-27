@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { startOfMonth } from "date-fns";
+import { startOfMonth, endOfMonth, format } from "date-fns";
 import { toast } from "sonner";
 import { Trash2 } from "lucide-react";
 
@@ -53,6 +53,7 @@ const BudgetIncomeAllocation = ({ selectedMonth, onUpdate, scope }: BudgetIncome
       if (!user) return;
 
       const monthStart = startOfMonth(selectedMonth);
+      const monthEnd = endOfMonth(selectedMonth); // Need endOfMonth for overlap check logic
       const monthKey = monthStart.toISOString().split('T')[0];
 
       // Get household context for family scope
@@ -66,12 +67,16 @@ const BudgetIncomeAllocation = ({ selectedMonth, onUpdate, scope }: BudgetIncome
         householdId = membership?.household_id || null;
       }
 
-      // Fetch income budgets
+      const monthStartStr = format(monthStart, 'yyyy-MM-dd');
+      const monthEndStr = format(monthEnd, 'yyyy-MM-dd');
+
+      // Fetch ALL income budgets that overlap (start <= monthEnd)
+      // We filter end_date on client side
       let incomeQuery = supabase
         .from("monthly_budgets")
-        .select("id, category, planned_amount")
+        .select("id, category, planned_amount, start_date, end_date")
         .eq("type", "income")
-        .eq("month_year", monthKey);
+        .lte("start_date", monthEndStr);
 
       if (scope === "individual") {
         incomeQuery = incomeQuery.eq("user_id", user.id).is("household_id", null);
@@ -79,14 +84,19 @@ const BudgetIncomeAllocation = ({ selectedMonth, onUpdate, scope }: BudgetIncome
         incomeQuery = incomeQuery.eq("household_id", householdId);
       }
 
-      const { data: incomeData } = await incomeQuery;
+      const { data: rawIncomeData } = await incomeQuery;
 
-      // Fetch expense budgets
+      const incomeData = (rawIncomeData || []).filter(b => {
+        if (!b.end_date) return true;
+        return b.end_date >= monthStartStr;
+      });
+
+      // Fetch ALL expense budgets that overlap
       let expenseQuery = supabase
         .from("monthly_budgets")
-        .select("id, category, planned_amount")
+        .select("id, category, planned_amount, start_date, end_date")
         .eq("type", "expense")
-        .eq("month_year", monthKey);
+        .lte("start_date", monthEndStr);
 
       if (scope === "individual") {
         expenseQuery = expenseQuery.eq("user_id", user.id).is("household_id", null);
@@ -94,7 +104,12 @@ const BudgetIncomeAllocation = ({ selectedMonth, onUpdate, scope }: BudgetIncome
         expenseQuery = expenseQuery.eq("household_id", householdId);
       }
 
-      const { data: expenseData } = await expenseQuery;
+      const { data: rawExpenseData } = await expenseQuery;
+
+      const expenseData = (rawExpenseData || []).filter(b => {
+        if (!b.end_date) return true;
+        return b.end_date >= monthStartStr;
+      });
 
       // Fetch existing allocations
       const { data: allocationsData } = await supabase
@@ -342,7 +357,7 @@ const BudgetIncomeAllocation = ({ selectedMonth, onUpdate, scope }: BudgetIncome
                     </select>
                     <Input
                       type="number"
-                      step="0.01"
+                      step="any"
                       placeholder="Amount"
                       value={alloc.amount || ""}
                       onChange={(e) => updateAllocation(ea.expense.id, index, "amount", e.target.value)}

@@ -19,23 +19,24 @@ const COLORS = [
 
 interface ExpenseChartProps {
   scope: "individual" | "family";
+  selectedMonth?: Date;
 }
 
-const ExpenseChart = ({ scope }: ExpenseChartProps) => {
+const ExpenseChart = ({ scope, selectedMonth = new Date() }: ExpenseChartProps) => {
   const [data, setData] = useState<CategoryData[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     fetchExpenseData();
-  }, [scope]);
+  }, [scope, selectedMonth]);
 
   const fetchExpenseData = async () => {
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
 
-      const startDate = format(startOfMonth(new Date()), "yyyy-MM-dd");
-      const endDate = format(endOfMonth(new Date()), "yyyy-MM-dd");
+      const startDate = format(startOfMonth(selectedMonth), "yyyy-MM-dd");
+      const endDate = format(endOfMonth(selectedMonth), "yyyy-MM-dd");
 
       // Get household context for family scope
       let householdId: string | null = null;
@@ -133,7 +134,7 @@ const ExpenseChart = ({ scope }: ExpenseChartProps) => {
             new Intl.NumberFormat("en-IN", {
               style: "currency",
               currency: "INR",
-              maximumFractionDigits: 0,
+              maximumFractionDigits: 4,
             }).format(value)
           }
         />

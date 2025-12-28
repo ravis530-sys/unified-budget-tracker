@@ -18,7 +18,7 @@ import {
     SelectValue,
 } from "@/components/ui/select";
 import { toast } from "sonner";
-import { Copy, Check } from "lucide-react";
+import { Copy, Check, Mail } from "lucide-react";
 
 interface InviteMemberDialogProps {
     open: boolean;
@@ -73,6 +73,14 @@ const InviteMemberDialog = ({
             setCopied(true);
             setTimeout(() => setCopied(false), 2000);
             toast.success("Link copied to clipboard");
+        }
+    };
+
+    const shareViaEmail = () => {
+        if (inviteLink) {
+            const subject = "Join my household on BudgetTrack";
+            const body = `Hi,\n\nI've invited you to join my household on BudgetTrack so we can manage our finances together.\n\nClick the link below to join:\n${inviteLink}\n\nThis link expires in 7 days.`;
+            window.location.href = `mailto:${email}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
         }
     };
 
@@ -141,6 +149,14 @@ const InviteMemberDialog = ({
                                 Share this link with {email}. It expires in 7 days.
                             </p>
                         </div>
+
+                        <Button
+                            className="w-full"
+                            onClick={shareViaEmail}
+                        >
+                            <Mail className="mr-2 h-4 w-4" />
+                            Share via Email
+                        </Button>
 
                         <Button
                             variant="outline"

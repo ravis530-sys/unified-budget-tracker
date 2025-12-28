@@ -110,19 +110,19 @@ const Dashboard = () => {
               </div>
             </div>
 
-            <div className="h-8 w-px bg-border mx-2" />
+            <div className="h-8 w-px bg-border mx-2 hidden md:block" />
 
             <HouseholdSwitcher />
           </div>
 
-          <div className="flex gap-2">
-            <Button variant="ghost" size="icon" onClick={() => navigate("/budget-planning")} title="Budget Planning">
+          <div className="flex gap-1 md:gap-2">
+            <Button variant="ghost" size="icon" className="h-8 w-8 md:h-10 md:w-10" onClick={() => navigate("/budget-planning")} title="Budget Planning">
               <CalendarDays className="h-5 w-5" />
             </Button>
-            <Button variant="ghost" size="icon" onClick={() => navigate("/household-settings")} title="Family Settings">
+            <Button variant="ghost" size="icon" className="h-8 w-8 md:h-10 md:w-10" onClick={() => navigate("/household-settings")} title="Family Settings">
               <Users className="h-5 w-5" />
             </Button>
-            <Button variant="ghost" size="icon" onClick={handleSignOut} title="Sign Out">
+            <Button variant="ghost" size="icon" className="h-8 w-8 md:h-10 md:w-10" onClick={handleSignOut} title="Sign Out">
               <LogOut className="h-5 w-5" />
             </Button>
           </div>
@@ -141,8 +141,8 @@ const Dashboard = () => {
               onMonthChange={setSelectedMonth}
             />
             <Button onClick={() => setShowAddDialog(true)}>
-              <Plus className="h-4 w-4 mr-2" />
-              Add Transaction
+              <Plus className="h-4 w-4 md:mr-2" />
+              <span className="hidden md:inline">Add Transaction</span>
             </Button>
           </div>
         </div>

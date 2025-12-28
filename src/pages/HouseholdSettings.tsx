@@ -265,7 +265,7 @@ const HouseholdSettings = () => {
                 {members.map((member) => (
                   <div
                     key={member.id}
-                    className="flex items-center justify-between p-3 border rounded-lg"
+                    className="flex flex-wrap md:flex-nowrap items-center justify-between p-3 border rounded-lg gap-3"
                   >
                     <div className="flex items-center gap-3">
                       <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center">
@@ -301,6 +301,7 @@ const HouseholdSettings = () => {
                           <Button
                             variant="outline"
                             size="sm"
+                            className="text-xs h-8"
                             onClick={() => handlePromoteToAdmin(member.id)}
                           >
                             Make Admin

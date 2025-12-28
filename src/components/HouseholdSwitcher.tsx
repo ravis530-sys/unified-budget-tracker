@@ -61,10 +61,12 @@ const HouseholdSwitcher = () => {
                         variant="outline"
                         role="combobox"
                         aria-expanded={open}
-                        className="w-[200px] justify-between"
+                        className="w-[130px] md:w-[200px] justify-between"
                     >
-                        <Home className="mr-2 h-4 w-4" />
-                        {activeHousehold ? activeHousehold.name : "Select Household"}
+                        <Home className="mr-2 h-4 w-4 shrink-0" />
+                        <span className="truncate">
+                            {activeHousehold ? activeHousehold.name : "Select Household"}
+                        </span>
                         <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
                     </Button>
                 </PopoverTrigger>

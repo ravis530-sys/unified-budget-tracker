@@ -15,6 +15,7 @@ import BudgetAllocationBreakdown from "@/components/BudgetAllocationBreakdown";
 import BudgetMonthSelector from "@/components/BudgetMonthSelector";
 import HouseholdSetupDialog from "@/components/HouseholdSetupDialog";
 import { useHousehold } from "@/hooks/useHousehold";
+import HouseholdSwitcher from "@/components/HouseholdSwitcher";
 
 const Dashboard = () => {
   const [session, setSession] = useState<Session | null>(null);
@@ -73,7 +74,12 @@ const Dashboard = () => {
 
   const handleScopeChange = (newScope: "individual" | "family") => {
     if (newScope === "family" && !household) {
-      setShowHouseholdSetup(true);
+      // setShowHouseholdSetup(true); // Don't show setup dialog on family click since we have switcher now
+      // Maybe just toast "Select or create a household first" or let the switcher handle it
+      // For now, let's keep the setup dialog but also make it clear they can switch
+      if (!household) {
+        setShowHouseholdSetup(true);
+      }
       return;
     }
     setScope(newScope);
@@ -93,15 +99,22 @@ const Dashboard = () => {
     <div className="min-h-screen bg-background">
       <header className="border-b bg-card">
         <div className="container mx-auto px-4 py-4 flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center">
-              <WalletIcon className="h-5 w-5 text-primary" />
+          <div className="flex items-center gap-4">
+            <div className="flex items-center gap-2">
+              <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center">
+                <WalletIcon className="h-5 w-5 text-primary" />
+              </div>
+              <div className="hidden md:block">
+                <h1 className="text-xl font-bold">BudgetTrack</h1>
+                <p className="text-xs text-muted-foreground">Track your finances</p>
+              </div>
             </div>
-            <div>
-              <h1 className="text-xl font-bold">BudgetTrack</h1>
-              <p className="text-xs text-muted-foreground">Track your finances</p>
-            </div>
+
+            <div className="h-8 w-px bg-border mx-2" />
+
+            <HouseholdSwitcher />
           </div>
+
           <div className="flex gap-2">
             <Button variant="ghost" size="icon" onClick={() => navigate("/budget-planning")} title="Budget Planning">
               <CalendarDays className="h-5 w-5" />

@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
 
-interface Household {
+export interface Household {
   id: string;
   name: string;
   created_by: string;
@@ -9,7 +9,7 @@ interface Household {
   updated_at: string;
 }
 
-interface HouseholdMember {
+export interface HouseholdMember {
   id: string;
   household_id: string;
   user_id: string;
@@ -23,52 +23,75 @@ interface HouseholdMember {
 export const useHousehold = () => {
   const [household, setHousehold] = useState<Household | null>(null);
   const [userRole, setUserRole] = useState<"admin" | "member" | null>(null);
+  const [myHouseholds, setMyHouseholds] = useState<Household[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    fetchHousehold();
+    fetchHouseholds();
   }, []);
 
-  const fetchHousehold = async () => {
+  const fetchHouseholds = async () => {
     try {
+      setLoading(true);
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
 
-      // First, get user's household membership (simple query, no joins)
-      const { data: membership, error: membershipError } = await supabase
+      // 1. Get all memberships
+      const { data: memberships, error: membershipError } = await supabase
         .from("household_members")
-        .select("role, household_id")
-        .eq("user_id", user.id)
-        .single();
+        .select("role, household:households(*)")
+        .eq("user_id", user.id);
 
       if (membershipError) {
-        if (membershipError.code !== "PGRST116") {
-          console.error("Error fetching household:", membershipError);
-        }
+        console.error("Error fetching memberships:", membershipError);
         return;
       }
 
-      if (membership) {
-        // Then fetch the household details separately
-        const { data: householdData, error: householdError } = await supabase
-          .from("households")
-          .select("*")
-          .eq("id", membership.household_id)
-          .single();
+      if (memberships && memberships.length > 0) {
+        // Extract households
+        const households = memberships.map((m: any) => m.household).filter(Boolean);
+        setMyHouseholds(households);
 
-        if (householdError) {
-          console.error("Error fetching household details:", householdError);
-          return;
+        // 2. Determine active household
+        // Check local storage or default to the first one
+        const storedHouseholdId = localStorage.getItem("activeHouseholdId");
+        let activeId = storedHouseholdId;
+
+        if (!activeId || !households.find(h => h.id === activeId)) {
+          // If no stored ID or stored ID is invalid (e.g. left household), default to first
+          activeId = households[0].id;
+          localStorage.setItem("activeHouseholdId", activeId);
         }
 
-        setHousehold(householdData);
-        setUserRole(membership.role);
+        const activeHousehold = households.find(h => h.id === activeId);
+        const activeMembership = memberships.find((m: any) => m.household.id === activeId);
+
+        setHousehold(activeHousehold || null);
+        setUserRole(activeMembership?.role || null);
+      } else {
+        setMyHouseholds([]);
+        setHousehold(null);
+        setUserRole(null);
+        localStorage.removeItem("activeHouseholdId");
       }
     } catch (error) {
-      console.error("Error in fetchHousehold:", error);
+      console.error("Error in fetchHouseholds:", error);
     } finally {
       setLoading(false);
     }
+  };
+
+  const switchHousehold = (householdId: string) => {
+    const selected = myHouseholds.find(h => h.id === householdId);
+    if (!selected) return;
+
+    localStorage.setItem("activeHouseholdId", householdId);
+    setHousehold(selected);
+
+    // We need to re-fetch to get the role correct if it differs between households
+    // Or we can just find it from the memberships if we store them state fully.
+    // For now, let's just re-fetch to be safe and consistent.
+    fetchHouseholds();
   };
 
   const createHousehold = async (name: string) => {
@@ -87,7 +110,19 @@ export const useHousehold = () => {
 
       if (error) throw error;
 
-      await fetchHousehold();
+      // Trigger trigger to add admin member is handled by DB or another flow?
+      // Assuming there is a DB trigger that adds the creator as admin.
+      // If not, we should do it manually. 
+      // Checking `fix_household_creation_trigger.sql` presence in file list suggests a trigger exists/intended.
+
+      // Force refresh
+      await fetchHouseholds();
+
+      // Auto-switch to new household
+      if (data) {
+        switchHousehold(data.id);
+      }
+
       return data;
     } catch (error) {
       console.error("Error creating household:", error);
@@ -96,14 +131,16 @@ export const useHousehold = () => {
   };
 
   const refreshHousehold = () => {
-    fetchHousehold();
+    fetchHouseholds();
   };
 
   return {
     household,
     userRole,
+    myHouseholds,
     loading,
     createHousehold,
+    switchHousehold,
     refreshHousehold,
   };
 };

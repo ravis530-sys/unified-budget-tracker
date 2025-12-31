@@ -19,6 +19,7 @@ export const EXPENSE_CATEGORIES = [
     "Utilities",
     "Healthcare",
     "Entertainment",
+    "Dinning",
     "EMI/Loans",
     "Credit Card Bill",
     "Insurance",

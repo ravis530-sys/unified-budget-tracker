@@ -9,6 +9,7 @@ import Dashboard from "./pages/Dashboard";
 import BudgetPlanning from "./pages/BudgetPlanning";
 import HouseholdSettings from "./pages/HouseholdSettings";
 import AcceptInvite from "./pages/AcceptInvite";
+import GoalAllocation from "./pages/GoalAllocation";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -26,6 +27,7 @@ const App = () => (
           <Route path="/budget-planning" element={<BudgetPlanning />} />
           <Route path="/household-settings" element={<HouseholdSettings />} />
           <Route path="/accept-invite/:token" element={<AcceptInvite />} />
+          <Route path="/goal-allocation" element={<GoalAllocation />} />
           {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
           <Route path="*" element={<NotFound />} />
         </Routes>

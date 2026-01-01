@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
-import { format, endOfMonth } from "date-fns";
+import { format, endOfMonth, startOfMonth } from "date-fns";
 import { ArrowLeft, Plus, Target, Banknote } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -72,12 +72,16 @@ const GoalAllocation = () => {
                 }
             };
 
+            const start = startOfMonth(selectedMonth);
+            const startDateStr = format(start, "yyyy-MM-dd");
+
             // Fetch current month's budgets for selection (EXPENSE ONLY)
-            // For INCOME, we now want ALL historical budgets to find unique sources
+            // Use start_date range to capture goals created on specific days (e.g. Jan 5)
             let expenseQuery = supabase
                 .from("monthly_budgets")
                 .select("*")
-                .eq("month_year", monthStr);
+                .gte("start_date", startDateStr)
+                .lte("start_date", endDateStr);
 
             expenseQuery = applyScopeFilter(expenseQuery);
 
@@ -281,6 +285,7 @@ const GoalAllocation = () => {
                         user_id: user?.id,
                         category: categoryName,
                         month_year: monthStr,
+                        start_date: monthStr, // Sync start_date for consistency
                         type: "income",
                         planned_amount: 0, // It was unplanned
                         interval: "Irregular",

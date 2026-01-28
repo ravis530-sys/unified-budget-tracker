@@ -35,7 +35,7 @@ interface TransactionListProps {
   onEdit?: (transaction: Transaction) => void;
   scope: "individual" | "family";
   selectedMonth?: Date;
-  type?: "income" | "expense";
+  type?: "income" | "expense" | "investment";
 }
 
 const TransactionList = ({ limit, onEdit, scope, selectedMonth, type }: TransactionListProps) => {
@@ -150,6 +150,59 @@ const TransactionList = ({ limit, onEdit, scope, selectedMonth, type }: Transact
     }
   };
 
+  const getIcon = (type: string) => {
+    switch (type) {
+      case "income":
+        return <TrendingUp className="h-5 w-5" />;
+      case "expense":
+        return <TrendingDown className="h-5 w-5" />;
+      case "investment":
+        return <TrendingUp className="h-5 w-5" />; // Investments also grow, so TrendingUp fits? Or maybe just use a different color. 
+      // Actually let's use TrendingUp but we'll style it differently below.
+      default:
+        return <TrendingDown className="h-5 w-5" />;
+    }
+  };
+
+  const getIconStyles = (type: string) => {
+    switch (type) {
+      case "income":
+        return "bg-success/10 text-success";
+      case "expense":
+        return "bg-destructive/10 text-destructive";
+      case "investment":
+        return "bg-blue-500/10 text-blue-500";
+      default:
+        return "bg-muted text-muted-foreground";
+    }
+  };
+
+  const getAmountColor = (type: string) => {
+    switch (type) {
+      case "income":
+        return "text-success";
+      case "expense":
+        return "text-destructive";
+      case "investment":
+        return "text-blue-500";
+      default:
+        return "text-foreground";
+    }
+  };
+
+  const getAmountPrefix = (type: string) => {
+    switch (type) {
+      case "income":
+        return "+";
+      case "expense":
+        return "-";
+      case "investment":
+        return ""; // Investments aren't exactly negative or positive in this context, they are transfers. But user might prefer just the number.
+      default:
+        return "";
+    }
+  };
+
   if (loading) {
     return (
       <div className="space-y-3">
@@ -183,16 +236,9 @@ const TransactionList = ({ limit, onEdit, scope, selectedMonth, type }: Transact
         >
           <div className="flex items-center gap-3 flex-1">
             <div
-              className={`h-10 w-10 rounded-full flex items-center justify-center ${transaction.type === "income"
-                ? "bg-success/10 text-success"
-                : "bg-destructive/10 text-destructive"
-                }`}
+              className={`h-10 w-10 rounded-full flex items-center justify-center ${getIconStyles(transaction.type)}`}
             >
-              {transaction.type === "income" ? (
-                <TrendingUp className="h-5 w-5" />
-              ) : (
-                <TrendingDown className="h-5 w-5" />
-              )}
+              {getIcon(transaction.type)}
             </div>
             <div>
               <p className="font-medium">{transaction.category}</p>
@@ -210,10 +256,9 @@ const TransactionList = ({ limit, onEdit, scope, selectedMonth, type }: Transact
           <div className="flex items-center gap-2">
             <div className="text-right">
               <p
-                className={`font-semibold ${transaction.type === "income" ? "text-success" : "text-destructive"
-                  }`}
+                className={`font-semibold ${getAmountColor(transaction.type)}`}
               >
-                {transaction.type === "income" ? "+" : "-"}
+                {getAmountPrefix(transaction.type)}
                 {formatCurrency(transaction.amount)}
               </p>
             </div>

@@ -26,6 +26,16 @@ export const EXPENSE_CATEGORIES = [
     "Other",
 ];
 
+export const INVESTMENT_CATEGORIES = [
+    "Stocks",
+    "ETFs",
+    "Mutual Funds (MF)",
+    "Fixed Deposits (FD)",
+    "Bonds",
+    "Lend",
+    "Other Investments",
+];
+
 export const INTERVALS = [
     { value: "one-time", label: "One-time" },
     { value: "weekly", label: "Weekly" },

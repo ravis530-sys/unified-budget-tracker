@@ -123,22 +123,13 @@ const DashboardStats = ({ scope, selectedMonth = new Date() }: DashboardStatsPro
       const totalCurrentExpenses = currentExpenses?.reduce((sum, t) => sum + Number(t.amount), 0) || 0;
       const totalCurrentEarnings = currentEarningsData?.reduce((sum, t) => sum + Number(t.amount), 0) || 0;
 
-      // Net Balance = Total Saved - Current Month Expenses
-      // Note: Typically Net Balance might include current month income too, but "Total Saved" logic implies accumulated.
-      // If user wants "Available", it usually is Saved + Current Income - Current Expenses.
-      // But preserving existing logic for "Net Balance" as (Saved - Current Expenses) as per previous code, 
-      // though typically "Available Balance" is the more useful metric. 
-      // I will keep Net Balance formula same as before to avoid changing logic unless asked, 
-      // but "Total Saved - Current Expenses" is a bit weird if current income isn't added.
-      // Wait, previous code: `const netBalance = totalSaved - totalCurrentExpenses;`
-      // This implies we are spending from savings. 
-      // If we have current income, we should probably add it? 
-      // Current request is just "show earning totals". I won't change the math of other cards to be safe.
+      // Net Balance = Total Saved + Current Month Earnings - Current Month Expenses
+      // This gives the actual available balance for the current month
+      const netBalance = totalSaved + totalCurrentEarnings - totalCurrentExpenses;
 
-      const netBalance = totalSaved - totalCurrentExpenses;
-
-      // Savings Rate = (Net Balance / Total Saved) * 100 (percentage of savings remaining)
-      const savingsRate = totalSaved > 0 ? (netBalance / totalSaved) * 100 : 0;
+      // Savings Rate = (Net Balance / (Total Saved + Current Earnings)) * 100 (percentage of total available funds remaining)
+      const totalAvailable = totalSaved + totalCurrentEarnings;
+      const savingsRate = totalAvailable > 0 ? (netBalance / totalAvailable) * 100 : 0;
 
       setStats({
         accumulatedSavings: totalSaved,
@@ -237,7 +228,7 @@ const DashboardStats = ({ scope, selectedMonth = new Date() }: DashboardStatsPro
           <div className={`text-2xl font-bold ${stats.netBalance >= 0 ? "text-success" : "text-destructive"}`}>
             {formatCurrency(stats.netBalance)}
           </div>
-          <p className="text-xs text-muted-foreground mt-1">Saved - Expenses</p>
+          <p className="text-xs text-muted-foreground mt-1">Available this month</p>
         </CardContent>
       </Card>
 

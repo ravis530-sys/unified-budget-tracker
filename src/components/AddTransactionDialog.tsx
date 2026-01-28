@@ -10,7 +10,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { toast } from "sonner";
 import { format } from "date-fns";
 
-import { INCOME_CATEGORIES, EXPENSE_CATEGORIES, INTERVALS } from "@/lib/constants";
+import { INCOME_CATEGORIES, EXPENSE_CATEGORIES, INTERVALS, INVESTMENT_CATEGORIES } from "@/lib/constants";
 
 
 interface Transaction {
@@ -33,7 +33,8 @@ interface AddTransactionDialogProps {
 }
 
 const AddTransactionDialog = ({ open, onOpenChange, onSuccess, transaction, scope }: AddTransactionDialogProps) => {
-  const [type, setType] = useState<"income" | "expense">(transaction?.type as "income" | "expense" || "income");
+  const [type, setType] = useState<"income" | "expense" | "investment">(transaction?.type as "income" | "expense" | "investment" || "income");
+  const [activeTab, setActiveTab] = useState<"income" | "expense" | "investment">("income");
   const [category, setCategory] = useState(transaction?.category || "");
   const [amount, setAmount] = useState(transaction?.amount.toString() || "");
   const [date, setDate] = useState(transaction?.transaction_date || format(new Date(), "yyyy-MM-dd"));
@@ -99,7 +100,15 @@ const AddTransactionDialog = ({ open, onOpenChange, onSuccess, transaction, scop
   // Update form when transaction changes
   useEffect(() => {
     if (transaction) {
-      setType(transaction.type as "income" | "expense");
+      const txType = transaction.type as "income" | "expense" | "investment";
+      setType(txType);
+
+      if (txType === "investment") {
+        setActiveTab("investment");
+      } else {
+        setActiveTab(txType);
+      }
+
       setCategory(transaction.category);
       setAmount(transaction.amount.toString());
       setDate(transaction.transaction_date);
@@ -109,6 +118,7 @@ const AddTransactionDialog = ({ open, onOpenChange, onSuccess, transaction, scop
     } else {
       // Reset form when transaction is null (add mode)
       setType("income");
+      setActiveTab("income");
       setCategory("");
       setAmount("");
       setDate(format(new Date(), "yyyy-MM-dd"));
@@ -209,13 +219,21 @@ const AddTransactionDialog = ({ open, onOpenChange, onSuccess, transaction, scop
           </DialogDescription>
         </DialogHeader>
 
-        <Tabs value={type} onValueChange={(v) => setType(v as "income" | "expense")}>
-          <TabsList className="grid w-full grid-cols-2">
+        <Tabs value={activeTab} onValueChange={(v) => {
+          const newTab = v as "income" | "expense" | "investment";
+          setActiveTab(newTab);
+          if (newTab === "income") setType("income");
+          else if (newTab === "expense") setType("expense");
+          else setType("investment");
+          setCategory("");
+        }}>
+          <TabsList className="grid w-full grid-cols-3">
             <TabsTrigger value="income">Income</TabsTrigger>
             <TabsTrigger value="expense">Expense</TabsTrigger>
+            <TabsTrigger value="investment">Investment</TabsTrigger>
           </TabsList>
 
-          <TabsContent value={type} className="space-y-4 mt-4">
+          <TabsContent value={activeTab} className="space-y-4 mt-4">
             <form onSubmit={handleSubmit} className="space-y-4">
               <div className="space-y-2">
                 <Label htmlFor="category">Category</Label>
@@ -224,7 +242,13 @@ const AddTransactionDialog = ({ open, onOpenChange, onSuccess, transaction, scop
                     <SelectValue placeholder="Select category" />
                   </SelectTrigger>
                   <SelectContent>
-                    {type === "expense" && budgetCategories.length > 0 ? (
+                    {activeTab === "investment" ? (
+                      INVESTMENT_CATEGORIES.map((cat) => (
+                        <SelectItem key={cat} value={cat}>
+                          {cat}
+                        </SelectItem>
+                      ))
+                    ) : type === "expense" && budgetCategories.length > 0 ? (
                       <>
                         <div className="px-2 py-1.5 text-xs font-semibold text-muted-foreground">Budget Categories</div>
                         {budgetCategories.map((cat) => (

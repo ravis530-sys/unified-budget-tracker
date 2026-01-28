@@ -11,6 +11,7 @@ import AddTransactionDialog from "@/components/AddTransactionDialog";
 import TransactionList from "@/components/TransactionList";
 import DashboardStats from "@/components/DashboardStats";
 import ExpenseChart from "@/components/ExpenseChart";
+import InvestmentChart from "@/components/InvestmentChart";
 import BudgetAllocationBreakdown from "@/components/BudgetAllocationBreakdown";
 import BudgetMonthSelector from "@/components/BudgetMonthSelector";
 import HouseholdSetupDialog from "@/components/HouseholdSetupDialog";
@@ -165,7 +166,7 @@ const Dashboard = () => {
                   <CardTitle>Budget Overview</CardTitle>
                   <CardDescription>Allocations for {selectedMonth.toLocaleString('default', { month: 'long', year: 'numeric' })}</CardDescription>
                 </CardHeader>
-                <CardContent>
+                <CardContent className="max-h-[400px] overflow-y-auto pr-2">
                   <BudgetAllocationBreakdown
                     key={`budget-${refreshKey}-${scope}-${selectedMonth.toISOString()}`}
                     selectedMonth={selectedMonth}
@@ -182,6 +183,18 @@ const Dashboard = () => {
                 </CardHeader>
                 <CardContent>
                   <ExpenseChart key={`${refreshKey}-${scope}-${selectedMonth.toISOString()}`} scope={scope} selectedMonth={selectedMonth} />
+                </CardContent>
+              </Card>
+            </div>
+
+            <div className="grid gap-6 md:grid-cols-1">
+              <Card>
+                <CardHeader>
+                  <CardTitle>Investment Breakdown</CardTitle>
+                  <CardDescription>Distribution by category for {selectedMonth.toLocaleString('default', { month: 'long', year: 'numeric' })}</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <InvestmentChart key={`investment-chart-${refreshKey}-${scope}-${selectedMonth.toISOString()}`} scope={scope} selectedMonth={selectedMonth} />
                 </CardContent>
               </Card>
             </div>
@@ -214,6 +227,24 @@ const Dashboard = () => {
                   <TransactionList
                     key={`expense-list-${refreshKey}-${scope}`}
                     type="expense"
+                    onEdit={handleEditTransaction}
+                    scope={scope}
+                    selectedMonth={selectedMonth}
+                  />
+                </CardContent>
+              </Card>
+            </div>
+
+            <div className="grid gap-6 md:grid-cols-1">
+              <Card>
+                <CardHeader>
+                  <CardTitle>Monthly Investments</CardTitle>
+                  <CardDescription>Investment details for {selectedMonth.toLocaleString('default', { month: 'long', year: 'numeric' })}</CardDescription>
+                </CardHeader>
+                <CardContent className="max-h-[400px] overflow-y-auto pr-2">
+                  <TransactionList
+                    key={`investment-list-${refreshKey}-${scope}`}
+                    type="investment"
                     onEdit={handleEditTransaction}
                     scope={scope}
                     selectedMonth={selectedMonth}

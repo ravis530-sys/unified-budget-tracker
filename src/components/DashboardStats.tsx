@@ -1,13 +1,14 @@
 import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { TrendingUp, TrendingDown, Wallet, PiggyBank, DollarSign } from "lucide-react";
+import { TrendingUp, TrendingDown, Wallet, PiggyBank, DollarSign, TrendingUpDown } from "lucide-react";
 import { format, startOfMonth, endOfMonth } from "date-fns";
 
 interface Stats {
   accumulatedSavings: number;
   currentEarnings: number;
   totalExpenses: number;
+  totalInvestments: number;
   netBalance: number;
   savingsRate: number;
 }
@@ -22,6 +23,7 @@ const DashboardStats = ({ scope, selectedMonth = new Date() }: DashboardStatsPro
     accumulatedSavings: 0,
     currentEarnings: 0,
     totalExpenses: 0,
+    totalInvestments: 0,
     netBalance: 0,
     savingsRate: 0,
   });
@@ -29,6 +31,28 @@ const DashboardStats = ({ scope, selectedMonth = new Date() }: DashboardStatsPro
 
   useEffect(() => {
     fetchStats();
+
+    // Set up real-time subscription for transactions
+    const channel = supabase
+      .channel('dashboard-stats-changes')
+      .on(
+        'postgres_changes',
+        {
+          event: '*', // Listen to INSERT, UPDATE, and DELETE
+          schema: 'public',
+          table: 'transactions'
+        },
+        () => {
+          // Refetch stats when any transaction changes
+          fetchStats();
+        }
+      )
+      .subscribe();
+
+    // Cleanup subscription on unmount
+    return () => {
+      supabase.removeChannel(channel);
+    };
   }, [scope, selectedMonth]);
 
   const fetchStats = async () => {
@@ -113,19 +137,52 @@ const DashboardStats = ({ scope, selectedMonth = new Date() }: DashboardStatsPro
 
       const { data: currentEarningsData } = await currentEarningsQuery;
 
+      // Fetch ALL investments from previous months (strictly before selected month)
+      let previousInvestmentsQuery = supabase
+        .from("transactions")
+        .select("amount")
+        .eq("type", "investment")
+        .lt("transaction_date", currentMonthStart);
+
+      if (scope === "individual") {
+        previousInvestmentsQuery = previousInvestmentsQuery.eq("user_id", user.id).is("household_id", null);
+      } else {
+        previousInvestmentsQuery = previousInvestmentsQuery.eq("household_id", householdId);
+      }
+
+      const { data: previousInvestments } = await previousInvestmentsQuery;
+
+      // Fetch current month investments
+      let currentInvestmentsQuery = supabase
+        .from("transactions")
+        .select("amount")
+        .eq("type", "investment")
+        .gte("transaction_date", currentMonthStart)
+        .lte("transaction_date", currentMonthEnd);
+
+      if (scope === "individual") {
+        currentInvestmentsQuery = currentInvestmentsQuery.eq("user_id", user.id).is("household_id", null);
+      } else {
+        currentInvestmentsQuery = currentInvestmentsQuery.eq("household_id", householdId);
+      }
+
+      const { data: currentInvestments } = await currentInvestmentsQuery;
+
 
       const totalPreviousEarnings = earnings?.reduce((sum, t) => sum + Number(t.amount), 0) || 0;
       const totalPreviousExpenses = previousExpenses?.reduce((sum, t) => sum + Number(t.amount), 0) || 0;
+      const totalPreviousInvestments = previousInvestments?.reduce((sum, t) => sum + Number(t.amount), 0) || 0;
 
-      // Total Saved = Total Previous Earnings - Total Previous Expenses
-      const totalSaved = totalPreviousEarnings - totalPreviousExpenses;
+      // Total Saved = Total Previous Earnings - Total Previous Expenses - Total Previous Investments
+      const totalSaved = totalPreviousEarnings - totalPreviousExpenses - totalPreviousInvestments;
 
       const totalCurrentExpenses = currentExpenses?.reduce((sum, t) => sum + Number(t.amount), 0) || 0;
       const totalCurrentEarnings = currentEarningsData?.reduce((sum, t) => sum + Number(t.amount), 0) || 0;
+      const totalCurrentInvestments = currentInvestments?.reduce((sum, t) => sum + Number(t.amount), 0) || 0;
 
-      // Net Balance = Total Saved + Current Month Earnings - Current Month Expenses
+      // Net Balance = Total Saved + Current Month Earnings - Current Month Expenses - Current Month Investments
       // This gives the actual available balance for the current month
-      const netBalance = totalSaved + totalCurrentEarnings - totalCurrentExpenses;
+      const netBalance = totalSaved + totalCurrentEarnings - totalCurrentExpenses - totalCurrentInvestments;
 
       // Savings Rate = (Net Balance / (Total Saved + Current Earnings)) * 100 (percentage of total available funds remaining)
       const totalAvailable = totalSaved + totalCurrentEarnings;
@@ -135,6 +192,7 @@ const DashboardStats = ({ scope, selectedMonth = new Date() }: DashboardStatsPro
         accumulatedSavings: totalSaved,
         currentEarnings: totalCurrentEarnings,
         totalExpenses: totalCurrentExpenses,
+        totalInvestments: totalCurrentInvestments,
         netBalance,
         savingsRate,
       });
@@ -155,8 +213,8 @@ const DashboardStats = ({ scope, selectedMonth = new Date() }: DashboardStatsPro
 
   if (loading) {
     return (
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-5">
-        {[1, 2, 3, 4, 5].map((i) => (
+      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-6">
+        {[1, 2, 3, 4, 5, 6].map((i) => (
           <Card key={i}>
             <CardHeader className="pb-2">
               <div className="h-4 bg-muted animate-pulse rounded" />
@@ -171,7 +229,7 @@ const DashboardStats = ({ scope, selectedMonth = new Date() }: DashboardStatsPro
   }
 
   return (
-    <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-5">
+    <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-6">
       <Card>
         <CardHeader className="flex flex-row items-center justify-between pb-2">
           <CardTitle className="text-sm font-medium text-muted-foreground">
@@ -212,6 +270,21 @@ const DashboardStats = ({ scope, selectedMonth = new Date() }: DashboardStatsPro
         <CardContent>
           <div className="text-2xl font-bold text-destructive">
             {formatCurrency(stats.totalExpenses)}
+          </div>
+          <p className="text-xs text-muted-foreground mt-1">This month</p>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader className="flex flex-row items-center justify-between pb-2">
+          <CardTitle className="text-sm font-medium text-muted-foreground">
+            Total Investments
+          </CardTitle>
+          <TrendingUpDown className="h-4 w-4 text-orange-600" />
+        </CardHeader>
+        <CardContent>
+          <div className="text-2xl font-bold text-orange-600">
+            {formatCurrency(stats.totalInvestments)}
           </div>
           <p className="text-xs text-muted-foreground mt-1">This month</p>
         </CardContent>

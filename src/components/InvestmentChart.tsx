@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
-import { PieChart, Pie, Cell, ResponsiveContainer, Legend, Tooltip } from "recharts";
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Cell, ResponsiveContainer, Legend, Tooltip } from "recharts";
 import { format, startOfMonth, endOfMonth } from "date-fns";
 
 interface CategoryData {
@@ -100,7 +100,7 @@ const InvestmentChart = ({ scope, selectedMonth = new Date() }: InvestmentChartP
     if (loading) {
         return (
             <div className="h-64 flex items-center justify-center">
-                <div className="h-32 w-32 bg-muted animate-pulse rounded-full" />
+                <div className="h-48 w-full bg-muted animate-pulse rounded" />
             </div>
         );
     }
@@ -113,34 +113,60 @@ const InvestmentChart = ({ scope, selectedMonth = new Date() }: InvestmentChartP
         );
     }
 
+    const CustomLabel = (props: any) => {
+        const { x, y, width, height, value } = props;
+        const dataItem = data.find(d => d.value === value);
+        const percentage = dataItem?.percentage.toFixed(1) || '0';
+
+        return (
+            <text
+                x={x + width / 2}
+                y={y + height / 2}
+                fill="white"
+                textAnchor="middle"
+                dominantBaseline="middle"
+                fontWeight="bold"
+                fontSize="14"
+            >
+                {percentage}%
+            </text>
+        );
+    };
+
     return (
         <ResponsiveContainer width="100%" height={300}>
-            <PieChart>
-                <Pie
-                    data={data}
-                    cx="50%"
-                    cy="50%"
-                    labelLine={false}
-                    label={(entry) => `${entry.percentage.toFixed(1)}%`}
-                    outerRadius={80}
-                    fill="#8884d8"
-                    dataKey="value"
-                >
-                    {data.map((entry, index) => (
-                        <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                    ))}
-                </Pie>
+            <BarChart data={data}>
+                <CartesianGrid strokeDasharray="3 3" />
+                <XAxis
+                    dataKey="name"
+                    hide
+                />
+                <YAxis
+                    label={{ value: 'Amount (₹)', angle: -90, position: 'insideLeft' }}
+                />
                 <Tooltip
-                    formatter={(value: number) =>
+                    formatter={(value: number, name: string, props: any) => [
                         new Intl.NumberFormat("en-IN", {
                             style: "currency",
                             currency: "INR",
                             maximumFractionDigits: 4,
-                        }).format(value)
-                    }
+                        }).format(value),
+                        props.payload.name
+                    ]}
                 />
-                <Legend />
-            </PieChart>
+                <Legend
+                    payload={data.map((entry, index) => ({
+                        value: entry.name,
+                        type: 'square',
+                        color: COLORS[index % COLORS.length]
+                    }))}
+                />
+                <Bar dataKey="value" label={<CustomLabel />}>
+                    {data.map((entry, index) => (
+                        <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                    ))}
+                </Bar>
+            </BarChart>
         </ResponsiveContainer>
     );
 };

@@ -10,11 +10,11 @@ interface CategoryData {
 }
 
 const COLORS = [
-    "hsl(217, 91%, 60%)", // Blue
-    "hsl(212, 95%, 68%)", // Light Blue
-    "hsl(199, 89%, 48%)", // Cyan
-    "hsl(187, 71%, 42%)", // Teal
-    "hsl(173, 58%, 39%)", // Dark Teal
+    "hsl(var(--chart-1))",
+    "hsl(var(--chart-2))",
+    "hsl(var(--chart-3))",
+    "hsl(var(--chart-4))",
+    "hsl(var(--chart-5))",
 ];
 
 interface InvestmentChartProps {

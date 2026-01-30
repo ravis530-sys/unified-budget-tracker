@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -15,19 +15,36 @@ const Auth = () => {
   const [fullName, setFullName] = useState("");
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+
+  useEffect(() => {
+    if (searchParams.get("mode") === "signup") {
+      setIsLogin(false);
+    }
+  }, [searchParams]);
 
   useEffect(() => {
     // Check if user is already logged in
     supabase.auth.getSession().then(({ data: { session } }) => {
       if (session) {
-        navigate("/dashboard");
+        const pendingToken = localStorage.getItem("pendingInviteToken");
+        if (pendingToken) {
+          navigate(`/accept-invite/${pendingToken}`);
+        } else {
+          navigate("/dashboard");
+        }
       }
     });
 
     // Listen for auth changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
       if (session) {
-        navigate("/dashboard");
+        const pendingToken = localStorage.getItem("pendingInviteToken");
+        if (pendingToken) {
+          navigate(`/accept-invite/${pendingToken}`);
+        } else {
+          navigate("/dashboard");
+        }
       }
     });
 

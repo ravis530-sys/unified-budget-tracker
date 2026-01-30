@@ -61,7 +61,7 @@ const HouseholdSwitcher = () => {
                         variant="outline"
                         role="combobox"
                         aria-expanded={open}
-                        className="w-[130px] md:w-[200px] justify-between"
+                        className="w-[130px] md:w-[200px] justify-between bg-white/10 text-white border-white/20 hover:bg-white/20 hover:text-white"
                     >
                         <Home className="mr-2 h-4 w-4 shrink-0" />
                         <span className="truncate">

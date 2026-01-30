@@ -328,15 +328,15 @@ const GoalAllocation = () => {
 
     return (
         <div className="min-h-screen bg-background">
-            <header className="border-b bg-card">
+            <header className="border-b bg-[hsl(222,47%,11%)] text-white shadow-md">
                 <div className="container mx-auto px-4 py-4 flex items-center justify-between">
                     <div className="flex items-center gap-4">
-                        <Button variant="ghost" size="icon" onClick={() => navigate("/dashboard")}>
+                        <Button variant="ghost" size="icon" className="text-white hover:bg-white/10 hover:text-white" onClick={() => navigate("/dashboard")}>
                             <ArrowLeft className="h-5 w-5" />
                         </Button>
                         <div>
                             <h1 className="text-xl font-bold">Goal Allocation</h1>
-                            <p className="text-sm text-muted-foreground">Allocate earnings to your goals</p>
+                            <p className="text-sm text-white/70">Allocate earnings to your goals</p>
                         </div>
                     </div>
                 </div>

@@ -43,7 +43,7 @@ export const useHousehold = () => {
         .eq("user_id", user.id);
 
       if (membershipError) {
-        console.error("Error fetching memberships:", membershipError);
+        console.error("Error fetching memberships:", membershipError.message, membershipError.details, membershipError.hint);
         return;
       }
 

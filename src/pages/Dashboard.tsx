@@ -37,6 +37,11 @@ const Dashboard = () => {
       setUser(session?.user ?? null);
       if (!session) {
         navigate("/auth");
+      } else {
+        const pendingToken = localStorage.getItem("pendingInviteToken");
+        if (pendingToken) {
+          navigate(`/accept-invite/${pendingToken}`);
+        }
       }
     });
 
@@ -46,6 +51,11 @@ const Dashboard = () => {
       setUser(session?.user ?? null);
       if (!session) {
         navigate("/auth");
+      } else {
+        const pendingToken = localStorage.getItem("pendingInviteToken");
+        if (pendingToken) {
+          navigate(`/accept-invite/${pendingToken}`);
+        }
       }
     });
 
@@ -98,35 +108,35 @@ const Dashboard = () => {
 
   return (
     <div className="min-h-screen bg-background">
-      <header className="border-b bg-card">
+      <header className="border-b bg-[hsl(222,47%,11%)] text-white shadow-md">
         <div className="container mx-auto px-4 py-4 flex items-center justify-between">
           <div className="flex items-center gap-4">
             <div className="flex items-center gap-2">
-              <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center">
-                <WalletIcon className="h-5 w-5 text-primary" />
+              <div className="h-10 w-10 rounded-full bg-white/10 flex items-center justify-center">
+                <WalletIcon className="h-5 w-5 text-white" />
               </div>
               <div className="hidden md:block">
                 <h1 className="text-xl font-bold">BudgetTrack</h1>
-                <p className="text-xs text-muted-foreground">Track your finances</p>
+                <p className="text-xs text-white/70">Track your finances</p>
               </div>
             </div>
 
-            <div className="h-8 w-px bg-border mx-2 hidden md:block" />
+            <div className="h-8 w-px bg-white/10 mx-2 hidden md:block" />
 
             <HouseholdSwitcher />
           </div>
 
           <div className="flex gap-1 md:gap-2">
-            <Button variant="ghost" size="icon" className="h-8 w-8 md:h-10 md:w-10" onClick={() => navigate("/budget-planning")} title="Budget Planning">
+            <Button variant="ghost" size="icon" className="h-8 w-8 md:h-10 md:w-10 text-white hover:bg-white/10 hover:text-white" onClick={() => navigate("/budget-planning")} title="Budget Planning">
               <CalendarDays className="h-5 w-5" />
             </Button>
-            <Button variant="ghost" size="icon" className="h-8 w-8 md:h-10 md:w-10" onClick={() => navigate("/goal-allocation")} title="Goal Allocation">
+            <Button variant="ghost" size="icon" className="h-8 w-8 md:h-10 md:w-10 text-white hover:bg-white/10 hover:text-white" onClick={() => navigate("/goal-allocation")} title="Goal Allocation">
               <Target className="h-5 w-5" />
             </Button>
-            <Button variant="ghost" size="icon" className="h-8 w-8 md:h-10 md:w-10" onClick={() => navigate("/household-settings")} title="Family Settings">
+            <Button variant="ghost" size="icon" className="h-8 w-8 md:h-10 md:w-10 text-white hover:bg-white/10 hover:text-white" onClick={() => navigate("/household-settings")} title="Family Settings">
               <Users className="h-5 w-5" />
             </Button>
-            <Button variant="ghost" size="icon" className="h-8 w-8 md:h-10 md:w-10" onClick={handleSignOut} title="Sign Out">
+            <Button variant="ghost" size="icon" className="h-8 w-8 md:h-10 md:w-10 text-white hover:bg-white/10 hover:text-white" onClick={handleSignOut} title="Sign Out">
               <LogOut className="h-5 w-5" />
             </Button>
           </div>

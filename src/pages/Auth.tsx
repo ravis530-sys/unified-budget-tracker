@@ -24,8 +24,23 @@ const Auth = () => {
   }, [searchParams]);
 
   useEffect(() => {
+    // Check if we arrived from a stale invite link
+    const inviteToken = searchParams.get("inviteToken");
+    if (inviteToken) {
+      localStorage.setItem("pendingInviteToken", inviteToken);
+    }
+
     // Check if user is already logged in
-    supabase.auth.getSession().then(({ data: { session } }) => {
+    supabase.auth.getSession().then(({ data: { session }, error }) => {
+      if (error) {
+        console.error("Auth session error:", error);
+        if (error.status === 400 || error.message.includes("Refresh Token")) {
+          // Local cleanup only to stop loops
+          localStorage.removeItem("supabase.auth.token");
+        }
+        return;
+      }
+
       if (session) {
         const pendingToken = localStorage.getItem("pendingInviteToken");
         if (pendingToken) {

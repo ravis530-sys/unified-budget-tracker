@@ -10,7 +10,7 @@ const AcceptInvite = () => {
     const { token } = useParams();
     const navigate = useNavigate();
     const [loading, setLoading] = useState(true);
-    const [status, setStatus] = useState<"verifying" | "success" | "error">("verifying");
+    const [status, setStatus] = useState<"verifying" | "idle" | "success" | "error">("verifying");
     const [message, setMessage] = useState("Verifying invitation...");
     const [inviteDetails, setInviteDetails] = useState<any>(null);
 
@@ -22,65 +22,126 @@ const AcceptInvite = () => {
             return;
         }
 
+        // Validate UUID format
+        const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+        if (!uuidRegex.test(token)) {
+            setStatus("error");
+            setMessage("Invalid invitation token format");
+            setLoading(false);
+            return;
+        }
+
         verifyInvite();
     }, [token]);
 
     const verifyInvite = async () => {
+        console.log("Starting invitation verification for token:", token);
         try {
             // Check if user is logged in
-            const { data: { session } } = await supabase.auth.getSession();
+            console.log("Checking session...");
+            const { data: { session }, error: sessionError } = await supabase.auth.getSession();
 
-            if (!session) {
-                // Store token in local storage to handle after login
-                localStorage.setItem("pendingInviteToken", token!);
-                toast.info("Please sign in to accept the invitation");
-                navigate("/auth");
+            if (sessionError) {
+                console.error("Session error (AcceptInvite):", sessionError);
+                // Aggressive Local Cleanup: stop the browser from trying to refresh a dead token
+                if (sessionError.status === 400 || sessionError.message.includes("Refresh Token")) {
+                    console.warn("Detected stale refresh token. Performing local cleanup.");
+                    localStorage.removeItem("supabase.auth.token");
+                    localStorage.removeItem("pendingInviteToken");
+                    window.location.href = `/auth?mode=signup&inviteToken=${token}`;
+                } else {
+                    localStorage.setItem("pendingInviteToken", token!);
+                    toast.error("Your session has expired. Please log in again.");
+                    navigate("/auth?mode=signup");
+                }
                 return;
             }
 
+            if (!session) {
+                console.log("No active session found. Storing token and redirecting to auth.");
+                // Store token in local storage to handle after login
+                localStorage.setItem("pendingInviteToken", token!);
+                toast.info("Please create an account to accept the invitation");
+                navigate("/auth?mode=signup");
+                return;
+            }
+
+            console.log("Session verified for user:", session.user.id);
+
+            // Timeout protection
+            console.log("Fetching invitation details via RPC 'get_invitation_by_token'...");
+            const timeoutPromise = new Promise((_, reject) =>
+                setTimeout(() => reject(new Error("Verification timed out. Please check your network or try again.")), 15000)
+            );
+
             // Get invite details using the secure function
-            const { data, error } = await supabase
+            const rpcPromise = supabase
                 .rpc("get_invitation_by_token", { lookup_token: token });
 
-            if (error) throw error;
+            const { data, error } = await Promise.race([rpcPromise, timeoutPromise]) as any;
+
+            if (error) {
+                console.error("RPC 'get_invitation_by_token' failed:", error);
+                throw error;
+            }
+
+            console.log("Invitation data received:", data);
 
             if (!data || data.length === 0) {
+                console.warn("No invitation data found for this token.");
                 setStatus("error");
                 setMessage("Invitation not found or expired.");
                 setLoading(false);
                 return;
             }
 
+            console.log("Setting invite details and status to idle.");
             setInviteDetails(data[0]);
+            setStatus("idle");
             setLoading(false);
         } catch (error: any) {
-            console.error("Error verifying invite:", error);
+            console.error("Critical error in verifyInvite:", error);
             setStatus("error");
-            setMessage("Failed to verify invitation.");
+            setMessage("Failed to verify invitation. " + (error.message || ""));
             setLoading(false);
         }
     };
 
     const handleAccept = async () => {
+        console.log("User clicked 'Accept Invitation'.");
         setLoading(true);
         try {
+            console.log("Invoking RPC 'accept_invitation' for token:", token);
             const { data, error } = await supabase
                 .rpc("accept_invitation", { lookup_token: token });
 
-            if (error) throw error;
+            if (error) {
+                console.error("RPC 'accept_invitation' failed:", error);
+                throw error;
+            }
+
+            console.log("Accept invitation response data:", data);
 
             if (!data.success) {
+                console.error("Invitation acceptance logic failed:", data.message);
                 throw new Error(data.message);
             }
 
+            // Clear the token from local storage to prevent redirect loops from Dashboard
+            console.log("Clearing pendingInviteToken from local storage.");
+            localStorage.removeItem("pendingInviteToken");
+
+            console.log("Invitation accepted successfully. Updating UI and navigating...");
             setStatus("success");
             setMessage("You have successfully joined the household!");
             toast.success("Joined household successfully!");
 
             setTimeout(() => {
+                console.log("Redirecting to dashboard.");
                 navigate("/dashboard");
             }, 2000);
         } catch (error: any) {
+            console.error("Critical error in handleAccept:", error);
             toast.error(error.message || "Failed to accept invitation");
             setStatus("error");
             setMessage(error.message || "Failed to accept invitation");
@@ -89,7 +150,7 @@ const AcceptInvite = () => {
         }
     };
 
-    if (status === "verifying" || (loading && !inviteDetails)) {
+    if (status === "verifying") {
         return (
             <div className="min-h-screen flex items-center justify-center bg-background p-4">
                 <Card className="w-full max-w-md text-center">

@@ -24,6 +24,7 @@ interface InviteMemberDialogProps {
     open: boolean;
     onOpenChange: (open: boolean) => void;
     householdId: string;
+    householdName: string;
     onSuccess: () => void;
 }
 
@@ -31,6 +32,7 @@ const InviteMemberDialog = ({
     open,
     onOpenChange,
     householdId,
+    householdName,
     onSuccess,
 }: InviteMemberDialogProps) => {
     const [email, setEmail] = useState("");
@@ -58,7 +60,8 @@ const InviteMemberDialog = ({
 
             const link = `${window.location.origin}/accept-invite/${data.token}`;
             setInviteLink(link);
-            toast.success("Invitation created! Share the link below.");
+
+            toast.success("Invitation generated! You can now share the link.");
             onSuccess();
         } catch (error: any) {
             toast.error(error.message || "Failed to create invitation");

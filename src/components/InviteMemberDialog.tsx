@@ -81,8 +81,8 @@ const InviteMemberDialog = ({
 
     const shareViaEmail = () => {
         if (inviteLink) {
-            const subject = "Join my household on BudgetTrack";
-            const body = `Hi,\n\nI've invited you to join my household on BudgetTrack so we can manage our finances together.\n\nClick the link below to join:\n${inviteLink}\n\nThis link expires in 7 days.`;
+            const subject = "Join my household on MyFinanceHub";
+            const body = `Hi,\n\nI've invited you to join my household on MyFinanceHub so we can manage our finances together.\n\nClick the link below to join:\n${inviteLink}\n\nThis link expires in 7 days.`;
             window.location.href = `mailto:${email}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
         }
     };

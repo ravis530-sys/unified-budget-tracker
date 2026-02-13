@@ -116,7 +116,7 @@ const Dashboard = () => {
                 <WalletIcon className="h-5 w-5 text-white" />
               </div>
               <div className="hidden md:block">
-                <h1 className="text-xl font-bold">BudgetTrack</h1>
+                <h1 className="text-xl font-bold">MyFinanceHub</h1>
                 <p className="text-xs text-white/70">Track your finances</p>
               </div>
             </div>

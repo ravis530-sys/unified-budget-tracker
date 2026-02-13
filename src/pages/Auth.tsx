@@ -131,7 +131,7 @@ const Auth = () => {
               <Wallet className="h-8 w-8 text-primary" />
             </div>
           </div>
-          <CardTitle className="text-3xl font-bold">BudgetTrack</CardTitle>
+          <CardTitle className="text-3xl font-bold">MyFinanceHub</CardTitle>
           <CardDescription>
             {isLogin ? "Welcome back! Sign in to continue" : "Create your account to get started"}
           </CardDescription>

@@ -15,7 +15,7 @@ const Index = () => {
               <Wallet className="h-10 w-10 text-primary" />
             </div>
           </div>
-          <h1 className="text-5xl font-bold mb-4">BudgetTrack</h1>
+          <h1 className="text-5xl font-bold mb-4">MyFinanceHub</h1>
           <p className="text-xl text-muted-foreground mb-8 max-w-2xl mx-auto">
             Your complete financial companion for tracking earnings, expenses, and achieving your savings goals
           </p>

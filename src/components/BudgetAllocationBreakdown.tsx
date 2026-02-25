@@ -3,11 +3,13 @@ import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { startOfMonth, endOfMonth, format } from "date-fns";
+import { CATEGORY_SUB_ITEMS } from "@/lib/constants";
 
 interface BudgetAllocation {
   category: string;
   planned: number;
   actual: number;
+  subItems?: { name: string; actual: number }[];
 }
 
 interface BudgetAllocationBreakdownProps {
@@ -70,7 +72,7 @@ const BudgetAllocationBreakdown = ({ selectedMonth, type, scope }: BudgetAllocat
       // Fetch actual transactions
       let transactionQuery = supabase
         .from("transactions")
-        .select("category, amount")
+        .select("*")
         .eq("type", type)
         .gte("transaction_date", monthStart.toISOString())
         .lte("transaction_date", monthEnd.toISOString());
@@ -91,19 +93,36 @@ const BudgetAllocationBreakdown = ({ selectedMonth, type, scope }: BudgetAllocat
           category: budget.category,
           planned: Number(budget.planned_amount),
           actual: 0,
+          subItems: CATEGORY_SUB_ITEMS[budget.category] ? [] : undefined,
         });
       });
 
-      transactions?.forEach((transaction) => {
-        const existing = allocationMap.get(transaction.category);
-        if (existing) {
-          existing.actual += Number(transaction.amount);
-        } else {
-          allocationMap.set(transaction.category, {
+      (transactions as any[])?.forEach((transaction) => {
+        let existing = allocationMap.get(transaction.category);
+        if (!existing) {
+          existing = {
             category: transaction.category,
             planned: 0,
-            actual: Number(transaction.amount),
-          });
+            actual: 0,
+            subItems: CATEGORY_SUB_ITEMS[transaction.category] ? [] : undefined,
+          };
+          allocationMap.set(transaction.category, existing);
+        }
+
+        existing.actual += Number(transaction.amount);
+
+        // Track sub-items if applicable
+        if (existing.subItems && transaction.name) {
+          const subItemName = transaction.name.trim();
+          const existingSubItem = existing.subItems.find(s => s.name === subItemName);
+          if (existingSubItem) {
+            existingSubItem.actual += Number(transaction.amount);
+          } else {
+            existing.subItems.push({
+              name: subItemName,
+              actual: Number(transaction.amount),
+            });
+          }
         }
       });
 
@@ -161,6 +180,18 @@ const BudgetAllocationBreakdown = ({ selectedMonth, type, scope }: BudgetAllocat
                 value={Math.min(percentage, 100)}
                 className={isOverBudget ? 'bg-red-100' : ''}
               />
+            )}
+
+            {/* Sub-items breakdown */}
+            {allocation.subItems && allocation.subItems.length > 0 && (
+              <div className="pl-4 mt-2 space-y-1 border-l-2 border-muted">
+                {allocation.subItems.map((subItem) => (
+                  <div key={subItem.name} className="flex justify-between text-xs text-muted-foreground">
+                    <span>{subItem.name}</span>
+                    <span>₹{subItem.actual.toLocaleString()}</span>
+                  </div>
+                ))}
+              </div>
             )}
           </div>
         );

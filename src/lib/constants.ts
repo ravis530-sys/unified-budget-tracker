@@ -20,6 +20,7 @@ export const EXPENSE_CATEGORIES = [
     "Healthcare",
     "Entertainment",
     "Dinning",
+    "Coffee/Snacks",
     "EMI/Loans",
     "Credit Card Bill",
     "Insurance",
@@ -35,6 +36,14 @@ export const INVESTMENT_CATEGORIES = [
     "Lend",
     "Other Investments",
 ];
+
+export const FUEL_VEHICLE_TYPES = ["Car", "Bike"];
+
+// Map of expense categories that require a sub-item selection
+export const CATEGORY_SUB_ITEMS: Record<string, string[]> = {
+    "Fuel": FUEL_VEHICLE_TYPES,
+};
+
 
 export const INTERVALS = [
     { value: "one-time", label: "One-time" },

@@ -38,7 +38,6 @@ const ExpenseChart = ({ scope, selectedMonth = new Date() }: ExpenseChartProps) 
       const startDate = format(startOfMonth(selectedMonth), "yyyy-MM-dd");
       const endDate = format(endOfMonth(selectedMonth), "yyyy-MM-dd");
 
-      // Get household context for family scope
       let householdId: string | null = null;
       if (scope === "family") {
         const { data: membership } = await supabase
@@ -69,23 +68,19 @@ const ExpenseChart = ({ scope, selectedMonth = new Date() }: ExpenseChartProps) 
         return;
       }
 
-      // Group by category and calculate totals
-      const categoryTotals = expenses.reduce((acc, expense) => {
-        const category = expense.category;
-        if (!acc[category]) {
-          acc[category] = 0;
-        }
-        acc[category] += Number(expense.amount);
-        return acc;
-      }, {} as Record<string, number>);
+      // Group by category only (single slice per category)
+      const categoryTotals: Record<string, number> = {};
+      expenses.forEach((expense) => {
+        categoryTotals[expense.category] =
+          (categoryTotals[expense.category] ?? 0) + Number(expense.amount);
+      });
 
       const total = Object.values(categoryTotals).reduce((sum, val) => sum + val, 0);
 
-      // Convert to chart data with percentages
       const chartData: CategoryData[] = Object.entries(categoryTotals).map(([name, value]) => ({
         name,
         value,
-        percentage: (value / total) * 100,
+        percentage: total > 0 ? (value / total) * 100 : 0,
       }));
 
       setData(chartData);

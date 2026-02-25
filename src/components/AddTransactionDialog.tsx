@@ -10,7 +10,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { toast } from "sonner";
 import { format } from "date-fns";
 
-import { INCOME_CATEGORIES, EXPENSE_CATEGORIES, INTERVALS, INVESTMENT_CATEGORIES } from "@/lib/constants";
+import { INCOME_CATEGORIES, EXPENSE_CATEGORIES, INTERVALS, INVESTMENT_CATEGORIES, CATEGORY_SUB_ITEMS } from "@/lib/constants";
 
 
 interface Transaction {
@@ -41,6 +41,7 @@ const AddTransactionDialog = ({ open, onOpenChange, onSuccess, transaction, scop
   const [interval, setInterval] = useState(transaction?.interval || "one-time");
   const [remarks, setRemarks] = useState(transaction?.remarks || "");
   const [name, setName] = useState(transaction?.name || "");
+  const [subCategory, setSubCategory] = useState("");
   const [loading, setLoading] = useState(false);
   const [budgetCategories, setBudgetCategories] = useState<string[]>([]);
   const [budgetRemaining, setBudgetRemaining] = useState<Record<string, number>>({});
@@ -97,9 +98,9 @@ const AddTransactionDialog = ({ open, onOpenChange, onSuccess, transaction, scop
     }
   };
 
-  // Update form when transaction changes
+  // Update form when transaction changes or dialog opens
   useEffect(() => {
-    if (transaction) {
+    if (open && transaction) {
       const txType = transaction.type as "income" | "expense" | "investment";
       setType(txType);
 
@@ -114,19 +115,27 @@ const AddTransactionDialog = ({ open, onOpenChange, onSuccess, transaction, scop
       setDate(transaction.transaction_date);
       setInterval(transaction.interval);
       setRemarks(transaction.remarks || "");
-      setName(transaction.name || "");
-    } else {
-      // Reset form when transaction is null (add mode)
+      // If this category has sub-items, populate subCategory from name field
+      if (CATEGORY_SUB_ITEMS[transaction.category]) {
+        setSubCategory(transaction.name || "");
+        setName("");
+      } else {
+        setSubCategory("");
+        setName(transaction.name || "");
+      }
+    } else if (!open) {
+      // Reset form when dialog closes
       setType("income");
       setActiveTab("income");
       setCategory("");
+      setSubCategory("");
       setAmount("");
       setDate(format(new Date(), "yyyy-MM-dd"));
       setInterval("one-time");
       setRemarks("");
       setName("");
     }
-  }, [transaction]);
+  }, [transaction, open]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -158,6 +167,9 @@ const AddTransactionDialog = ({ open, onOpenChange, onSuccess, transaction, scop
         householdId = membership?.household_id || null;
       }
 
+      // Resolve the name field: use subCategory for categories with sub-items, else name
+      const resolvedName = CATEGORY_SUB_ITEMS[category] ? subCategory || null : name || null;
+
       if (transaction) {
         // Update existing transaction
         const { error } = await supabase
@@ -169,7 +181,7 @@ const AddTransactionDialog = ({ open, onOpenChange, onSuccess, transaction, scop
             transaction_date: date,
             interval,
             remarks: remarks || null,
-            name: name || null,
+            name: resolvedName,
           })
           .eq("id", transaction.id);
 
@@ -186,7 +198,7 @@ const AddTransactionDialog = ({ open, onOpenChange, onSuccess, transaction, scop
           transaction_date: date,
           interval,
           remarks: remarks || null,
-          name: name || null,
+          name: resolvedName,
         });
 
         if (error) throw error;
@@ -195,6 +207,7 @@ const AddTransactionDialog = ({ open, onOpenChange, onSuccess, transaction, scop
 
       // Reset form
       setCategory("");
+      setSubCategory("");
       setAmount("");
       setDate(format(new Date(), "yyyy-MM-dd"));
       setInterval("one-time");
@@ -226,6 +239,7 @@ const AddTransactionDialog = ({ open, onOpenChange, onSuccess, transaction, scop
           else if (newTab === "expense") setType("expense");
           else setType("investment");
           setCategory("");
+          setSubCategory("");
         }}>
           <TabsList className="grid w-full grid-cols-3">
             <TabsTrigger value="income">Income</TabsTrigger>
@@ -237,7 +251,19 @@ const AddTransactionDialog = ({ open, onOpenChange, onSuccess, transaction, scop
             <form onSubmit={handleSubmit} className="space-y-4">
               <div className="space-y-2">
                 <Label htmlFor="category">Category</Label>
-                <Select value={category} onValueChange={setCategory}>
+                <Select
+                  key={`${category}-${budgetCategories.length}`}
+                  value={category}
+                  onValueChange={(val) => {
+                    setCategory(val);
+                    // Set default sub-category (last item = "Bike") when switching to a sub-item category
+                    if (CATEGORY_SUB_ITEMS[val]) {
+                      setSubCategory(CATEGORY_SUB_ITEMS[val][CATEGORY_SUB_ITEMS[val].length - 1]);
+                    } else {
+                      setSubCategory("");
+                    }
+                  }}
+                >
                   <SelectTrigger id="category">
                     <SelectValue placeholder="Select category" />
                   </SelectTrigger>
@@ -279,6 +305,32 @@ const AddTransactionDialog = ({ open, onOpenChange, onSuccess, transaction, scop
                 </Select>
               </div>
 
+              {/* Sub-category radio selector for categories like Fuel */}
+              {type === "expense" && category && CATEGORY_SUB_ITEMS[category] && (
+                <div className="space-y-2">
+                  <Label>Vehicle Type</Label>
+                  <div className="flex gap-4">
+                    {CATEGORY_SUB_ITEMS[category].map((item) => (
+                      <label
+                        key={item}
+                        className="flex items-center gap-2 cursor-pointer select-none"
+                      >
+                        <input
+                          type="radio"
+                          name="vehicleType"
+                          value={item}
+                          checked={subCategory === item}
+                          onChange={() => setSubCategory(item)}
+                          className="accent-primary w-4 h-4"
+                        />
+                        <span className="text-sm font-medium">{item}</span>
+                      </label>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Name field only for income */}
               {type === "income" && (
                 <div className="space-y-2">
                   <Label htmlFor="name">Name (Optional)</Label>

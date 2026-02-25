@@ -17,6 +17,7 @@ import BudgetMonthSelector from "@/components/BudgetMonthSelector";
 import HouseholdSetupDialog from "@/components/HouseholdSetupDialog";
 import { useHousehold } from "@/hooks/useHousehold";
 import HouseholdSwitcher from "@/components/HouseholdSwitcher";
+import DashboardSection from "@/components/DashboardSection";
 
 const Dashboard = () => {
   const [session, setSession] = useState<Session | null>(null);
@@ -27,6 +28,14 @@ const Dashboard = () => {
   const [scope, setScope] = useState<"individual" | "family">("individual");
   const [showHouseholdSetup, setShowHouseholdSetup] = useState(false);
   const [selectedMonth, setSelectedMonth] = useState(new Date());
+
+  // Section empty states (default to false so they start visible and load data)
+  const [isBudgetEmpty, setIsBudgetEmpty] = useState(false);
+  const [isExpenseChartEmpty, setIsExpenseChartEmpty] = useState(false);
+  const [isInvestmentChartEmpty, setIsInvestmentChartEmpty] = useState(false);
+  const [isIncomeListEmpty, setIsIncomeListEmpty] = useState(false);
+  const [isExpenseListEmpty, setIsExpenseListEmpty] = useState(false);
+  const [isInvestmentListEmpty, setIsInvestmentListEmpty] = useState(false);
   const navigate = useNavigate();
   const { household, createHousehold, refreshHousehold } = useHousehold();
 
@@ -171,96 +180,106 @@ const Dashboard = () => {
             <DashboardStats key={`${refreshKey}-${scope}-${selectedMonth.toISOString()}`} scope={scope} selectedMonth={selectedMonth} />
 
             <div className="grid gap-6 md:grid-cols-2">
-              <Card>
-                <CardHeader>
-                  <CardTitle>Budget Overview</CardTitle>
-                  <CardDescription>Allocations for {selectedMonth.toLocaleString('default', { month: 'long', year: 'numeric' })}</CardDescription>
-                </CardHeader>
-                <CardContent className="max-h-[400px] overflow-y-auto pr-2">
+              <DashboardSection
+                title="Budget Overview"
+                description={`Allocations for ${selectedMonth.toLocaleString('default', { month: 'long', year: 'numeric' })}`}
+                isEmpty={isBudgetEmpty}
+              >
+                <div className="max-h-[400px] overflow-y-auto pr-2">
                   <BudgetAllocationBreakdown
                     key={`budget-${refreshKey}-${scope}-${selectedMonth.toISOString()}`}
                     selectedMonth={selectedMonth}
                     type="expense"
                     scope={scope}
+                    onDataLoaded={(hasData) => setIsBudgetEmpty(!hasData)}
                   />
-                </CardContent>
-              </Card>
+                </div>
+              </DashboardSection>
 
-              <Card>
-                <CardHeader>
-                  <CardTitle>Expense Breakdown</CardTitle>
-                  <CardDescription>Distribution by category</CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <ExpenseChart key={`${refreshKey}-${scope}-${selectedMonth.toISOString()}`} scope={scope} selectedMonth={selectedMonth} />
-                </CardContent>
-              </Card>
+              <DashboardSection
+                title="Expense Breakdown"
+                description="Distribution by category"
+                isEmpty={isExpenseChartEmpty}
+              >
+                <ExpenseChart
+                  key={`${refreshKey}-${scope}-${selectedMonth.toISOString()}`}
+                  scope={scope}
+                  selectedMonth={selectedMonth}
+                  onDataLoaded={(hasData) => setIsExpenseChartEmpty(!hasData)}
+                />
+              </DashboardSection>
             </div>
 
             <div className="grid gap-6 md:grid-cols-1">
-              <Card>
-                <CardHeader>
-                  <CardTitle>Investment Breakdown</CardTitle>
-                  <CardDescription>Distribution by category for {selectedMonth.toLocaleString('default', { month: 'long', year: 'numeric' })}</CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <InvestmentChart key={`investment-chart-${refreshKey}-${scope}-${selectedMonth.toISOString()}`} scope={scope} selectedMonth={selectedMonth} />
-                </CardContent>
-              </Card>
+              <DashboardSection
+                title="Investment Breakdown"
+                description={`Distribution by category for ${selectedMonth.toLocaleString('default', { month: 'long', year: 'numeric' })}`}
+                isEmpty={isInvestmentChartEmpty}
+              >
+                <InvestmentChart
+                  key={`investment-chart-${refreshKey}-${scope}-${selectedMonth.toISOString()}`}
+                  scope={scope}
+                  selectedMonth={selectedMonth}
+                  onDataLoaded={(hasData) => setIsInvestmentChartEmpty(!hasData)}
+                />
+              </DashboardSection>
             </div>
 
 
 
             <div className="grid gap-6 md:grid-cols-2">
-              <Card>
-                <CardHeader>
-                  <CardTitle>Monthly Earnings</CardTitle>
-                  <CardDescription>Income details for {selectedMonth.toLocaleString('default', { month: 'long', year: 'numeric' })}</CardDescription>
-                </CardHeader>
-                <CardContent className="max-h-[400px] overflow-y-auto pr-2">
+              <DashboardSection
+                title="Monthly Earnings"
+                description={`Income details for ${selectedMonth.toLocaleString('default', { month: 'long', year: 'numeric' })}`}
+                isEmpty={isIncomeListEmpty}
+              >
+                <div className="max-h-[400px] overflow-y-auto pr-2">
                   <TransactionList
                     key={`income-list-${refreshKey}-${scope}`}
                     type="income"
                     onEdit={handleEditTransaction}
                     scope={scope}
                     selectedMonth={selectedMonth}
+                    onDataLoaded={(hasData) => setIsIncomeListEmpty(!hasData)}
                   />
-                </CardContent>
-              </Card>
+                </div>
+              </DashboardSection>
 
-              <Card>
-                <CardHeader>
-                  <CardTitle>Monthly Expenses</CardTitle>
-                  <CardDescription>Expense details for {selectedMonth.toLocaleString('default', { month: 'long', year: 'numeric' })}</CardDescription>
-                </CardHeader>
-                <CardContent className="max-h-[400px] overflow-y-auto pr-2">
+              <DashboardSection
+                title="Monthly Expenses"
+                description={`Expense details for ${selectedMonth.toLocaleString('default', { month: 'long', year: 'numeric' })}`}
+                isEmpty={isExpenseListEmpty}
+              >
+                <div className="max-h-[400px] overflow-y-auto pr-2">
                   <TransactionList
                     key={`expense-list-${refreshKey}-${scope}`}
                     type="expense"
                     onEdit={handleEditTransaction}
                     scope={scope}
                     selectedMonth={selectedMonth}
+                    onDataLoaded={(hasData) => setIsExpenseListEmpty(!hasData)}
                   />
-                </CardContent>
-              </Card>
+                </div>
+              </DashboardSection>
             </div>
 
             <div className="grid gap-6 md:grid-cols-1">
-              <Card>
-                <CardHeader>
-                  <CardTitle>Monthly Investments</CardTitle>
-                  <CardDescription>Investment details for {selectedMonth.toLocaleString('default', { month: 'long', year: 'numeric' })}</CardDescription>
-                </CardHeader>
-                <CardContent className="max-h-[400px] overflow-y-auto pr-2">
+              <DashboardSection
+                title="Monthly Investments"
+                description={`Investment details for ${selectedMonth.toLocaleString('default', { month: 'long', year: 'numeric' })}`}
+                isEmpty={isInvestmentListEmpty}
+              >
+                <div className="max-h-[400px] overflow-y-auto pr-2">
                   <TransactionList
                     key={`investment-list-${refreshKey}-${scope}`}
                     type="investment"
                     onEdit={handleEditTransaction}
                     scope={scope}
                     selectedMonth={selectedMonth}
+                    onDataLoaded={(hasData) => setIsInvestmentListEmpty(!hasData)}
                   />
-                </CardContent>
-              </Card>
+                </div>
+              </DashboardSection>
             </div>
           </TabsContent>
         </Tabs>

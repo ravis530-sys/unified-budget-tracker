@@ -36,9 +36,10 @@ interface TransactionListProps {
   scope: "individual" | "family";
   selectedMonth?: Date;
   type?: "income" | "expense" | "investment";
+  onDataLoaded?: (hasData: boolean) => void;
 }
 
-const TransactionList = ({ limit, onEdit, scope, selectedMonth, type }: TransactionListProps) => {
+const TransactionList = ({ limit, onEdit, scope, selectedMonth, type, onDataLoaded }: TransactionListProps) => {
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [loading, setLoading] = useState(true);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
@@ -107,7 +108,9 @@ const TransactionList = ({ limit, onEdit, scope, selectedMonth, type }: Transact
         profiles: profilesData?.find(p => p.id === transaction.user_id) || null,
       }));
 
-      setTransactions(transactionsWithProfiles || []);
+      const results = transactionsWithProfiles || [];
+      setTransactions(results);
+      if (onDataLoaded) onDataLoaded(results.length > 0);
     } catch (error) {
       console.error("Error fetching transactions:", error);
     } finally {

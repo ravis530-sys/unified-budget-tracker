@@ -58,9 +58,10 @@ const CustomTooltip = ({ active, payload }: any) => {
 interface ExpenseChartProps {
   scope: "individual" | "family";
   selectedMonth?: Date;
+  onDataLoaded?: (hasData: boolean) => void;
 }
 
-const ExpenseChart = ({ scope, selectedMonth = new Date() }: ExpenseChartProps) => {
+const ExpenseChart = ({ scope, selectedMonth = new Date(), onDataLoaded }: ExpenseChartProps) => {
   const [data, setData] = useState<CategoryData[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -104,6 +105,7 @@ const ExpenseChart = ({ scope, selectedMonth = new Date() }: ExpenseChartProps) 
 
       if (rows.length === 0) {
         setLoading(false);
+        if (onDataLoaded) onDataLoaded(false);
         return;
       }
 
@@ -145,6 +147,7 @@ const ExpenseChart = ({ scope, selectedMonth = new Date() }: ExpenseChartProps) 
       }));
 
       setData(chartData);
+      if (onDataLoaded) onDataLoaded(chartData.length > 0);
     } catch (error) {
       console.error("Error fetching expense data:", error);
     } finally {

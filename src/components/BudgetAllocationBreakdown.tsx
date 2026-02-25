@@ -16,9 +16,10 @@ interface BudgetAllocationBreakdownProps {
   selectedMonth: Date;
   type: "income" | "expense";
   scope: "individual" | "family";
+  onDataLoaded?: (hasData: boolean) => void;
 }
 
-const BudgetAllocationBreakdown = ({ selectedMonth, type, scope }: BudgetAllocationBreakdownProps) => {
+const BudgetAllocationBreakdown = ({ selectedMonth, type, scope, onDataLoaded }: BudgetAllocationBreakdownProps) => {
   const [allocations, setAllocations] = useState<BudgetAllocation[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -126,7 +127,9 @@ const BudgetAllocationBreakdown = ({ selectedMonth, type, scope }: BudgetAllocat
         }
       });
 
-      setAllocations(Array.from(allocationMap.values()));
+      const results = Array.from(allocationMap.values());
+      setAllocations(results);
+      if (onDataLoaded) onDataLoaded(results.length > 0);
     } catch (error) {
       console.error("Error fetching allocations:", error);
     } finally {

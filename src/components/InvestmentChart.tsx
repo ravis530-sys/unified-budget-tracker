@@ -20,9 +20,10 @@ const COLORS = [
 interface InvestmentChartProps {
     scope: "individual" | "family";
     selectedMonth?: Date;
+    onDataLoaded?: (hasData: boolean) => void;
 }
 
-const InvestmentChart = ({ scope, selectedMonth = new Date() }: InvestmentChartProps) => {
+const InvestmentChart = ({ scope, selectedMonth = new Date(), onDataLoaded }: InvestmentChartProps) => {
     const [data, setData] = useState<CategoryData[]>([]);
     const [loading, setLoading] = useState(true);
 
@@ -67,6 +68,7 @@ const InvestmentChart = ({ scope, selectedMonth = new Date() }: InvestmentChartP
             if (!investments || investments.length === 0) {
                 setData([]); // Clear data when no investments
                 setLoading(false);
+                if (onDataLoaded) onDataLoaded(false);
                 return;
             }
 
@@ -90,6 +92,7 @@ const InvestmentChart = ({ scope, selectedMonth = new Date() }: InvestmentChartP
             }));
 
             setData(chartData);
+            if (onDataLoaded) onDataLoaded(chartData.length > 0);
         } catch (error) {
             console.error("Error fetching investment data:", error);
         } finally {

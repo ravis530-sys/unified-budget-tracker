@@ -12,6 +12,7 @@ export const INCOME_CATEGORIES = [
 export const EXPENSE_CATEGORIES = [
     "Groceries",
     "Vegetables",
+    "Fruits",
     "Fuel",
     "School Fees",
     "Travel",

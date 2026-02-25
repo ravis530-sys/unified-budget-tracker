@@ -2,11 +2,13 @@ import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { PieChart, Pie, Cell, ResponsiveContainer, Legend, Tooltip } from "recharts";
 import { format, startOfMonth, endOfMonth } from "date-fns";
+import { CATEGORY_SUB_ITEMS } from "@/lib/constants";
 
 interface CategoryData {
   name: string;
   value: number;
   percentage: number;
+  subItems?: { name: string; value: number }[];
 }
 
 const COLORS = [
@@ -16,6 +18,42 @@ const COLORS = [
   "hsl(var(--chart-4))",
   "hsl(var(--chart-5))",
 ];
+
+const formatCurrency = (amount: number) => {
+  return new Intl.NumberFormat("en-IN", {
+    style: "currency",
+    currency: "INR",
+    maximumFractionDigits: 0,
+  }).format(amount);
+};
+
+const CustomTooltip = ({ active, payload }: any) => {
+  if (active && payload && payload.length) {
+    const data = payload[0].payload as CategoryData;
+    const color = payload[0].payload.fill || "hsl(var(--primary))";
+
+    return (
+      <div className="bg-white border border-[#ccc] p-2.5 shadow-sm text-sm font-sans">
+        <div className="flex items-center gap-2 mb-1">
+          <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: color }} />
+          <span className="font-medium">{data.name}:</span>
+          <span>{formatCurrency(data.value)}</span>
+        </div>
+        {data.subItems && data.subItems.length > 0 && (
+          <div className="mt-2 pt-2 border-t border-dashed border-[#eee] space-y-1">
+            {data.subItems.map((sub) => (
+              <div key={sub.name} className="flex justify-between gap-6 text-xs text-muted-foreground ml-4">
+                <span>{sub.name}</span>
+                <span>{formatCurrency(sub.value)}</span>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    );
+  }
+  return null;
+};
 
 interface ExpenseChartProps {
   scope: "individual" | "family";
@@ -50,7 +88,7 @@ const ExpenseChart = ({ scope, selectedMonth = new Date() }: ExpenseChartProps) 
 
       let query = supabase
         .from("transactions")
-        .select("category, amount")
+        .select("*")
         .eq("type", "expense")
         .gte("transaction_date", startDate)
         .lte("transaction_date", endDate);
@@ -62,25 +100,48 @@ const ExpenseChart = ({ scope, selectedMonth = new Date() }: ExpenseChartProps) 
       }
 
       const { data: expenses } = await query;
+      const rows = (expenses || []) as any[];
 
-      if (!expenses || expenses.length === 0) {
+      if (rows.length === 0) {
         setLoading(false);
         return;
       }
 
-      // Group by category only (single slice per category)
-      const categoryTotals: Record<string, number> = {};
-      expenses.forEach((expense) => {
-        categoryTotals[expense.category] =
-          (categoryTotals[expense.category] ?? 0) + Number(expense.amount);
+      // Group by category and collect sub-items
+      const categoryMap: Record<string, CategoryData> = {};
+
+      rows.forEach((expense) => {
+        const catName = expense.category;
+        const amount = Number(expense.amount);
+        const subName = expense.name?.trim();
+        const hasSubItems = !!CATEGORY_SUB_ITEMS[catName];
+
+        if (!categoryMap[catName]) {
+          categoryMap[catName] = {
+            name: catName,
+            value: 0,
+            percentage: 0,
+            subItems: hasSubItems ? [] : undefined
+          };
+        }
+
+        categoryMap[catName].value += amount;
+
+        if (hasSubItems && subName && categoryMap[catName].subItems) {
+          const existingSub = categoryMap[catName].subItems!.find(s => s.name === subName);
+          if (existingSub) {
+            existingSub.value += amount;
+          } else {
+            categoryMap[catName].subItems!.push({ name: subName, value: amount });
+          }
+        }
       });
 
-      const total = Object.values(categoryTotals).reduce((sum, val) => sum + val, 0);
+      const total = Object.values(categoryMap).reduce((sum, d) => sum + d.value, 0);
 
-      const chartData: CategoryData[] = Object.entries(categoryTotals).map(([name, value]) => ({
-        name,
-        value,
-        percentage: total > 0 ? (value / total) * 100 : 0,
+      const chartData: CategoryData[] = Object.values(categoryMap).map((d) => ({
+        ...d,
+        percentage: total > 0 ? (d.value / total) * 100 : 0,
       }));
 
       setData(chartData);
@@ -124,15 +185,7 @@ const ExpenseChart = ({ scope, selectedMonth = new Date() }: ExpenseChartProps) 
             <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
           ))}
         </Pie>
-        <Tooltip
-          formatter={(value: number) =>
-            new Intl.NumberFormat("en-IN", {
-              style: "currency",
-              currency: "INR",
-              maximumFractionDigits: 4,
-            }).format(value)
-          }
-        />
+        <Tooltip content={<CustomTooltip />} />
         <Legend />
       </PieChart>
     </ResponsiveContainer>

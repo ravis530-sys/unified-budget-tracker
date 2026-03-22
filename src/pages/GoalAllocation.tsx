@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { format, endOfMonth, startOfMonth } from "date-fns";
-import { ArrowLeft, Plus, Target, Banknote } from "lucide-react";
+import { ArrowLeft, Plus, Target, Banknote, Pencil, Check, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -12,6 +12,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { toast } from "sonner";
 import BudgetMonthSelector from "@/components/BudgetMonthSelector";
 import { useHousehold } from "@/hooks/useHousehold";
+import { EXPENSE_CATEGORIES, INVESTMENT_CATEGORIES } from "@/lib/constants";
 
 interface MonthlyBudget {
     id: string;
@@ -19,6 +20,8 @@ interface MonthlyBudget {
     planned_amount: number;
     type: "income" | "expense";
     interval: string;
+    start_date?: string;
+    end_date?: string;
     household_id?: string | null;
 }
 
@@ -45,6 +48,9 @@ const GoalAllocation = () => {
     const [selectedExpenseId, setSelectedExpenseId] = useState("");
     const [amount, setAmount] = useState("");
     const [loading, setLoading] = useState(false);
+
+    const [editingAllocId, setEditingAllocId] = useState<string | null>(null);
+    const [editAllocAmount, setEditAllocAmount] = useState<string>("");
 
     useEffect(() => {
         // Reset selection when scope changes
@@ -75,19 +81,23 @@ const GoalAllocation = () => {
             const start = startOfMonth(selectedMonth);
             const startDateStr = format(start, "yyyy-MM-dd");
 
-            // Fetch current month's budgets for selection (EXPENSE ONLY)
-            // Use start_date range to capture goals created on specific days (e.g. Jan 5)
-            let expenseQuery = supabase
+            // Fetch budgets overlapping with the selected month
+            let budgetQuery = supabase
                 .from("monthly_budgets")
                 .select("*")
-                .gte("start_date", startDateStr)
                 .lte("start_date", endDateStr);
 
-            expenseQuery = applyScopeFilter(expenseQuery);
+            budgetQuery = applyScopeFilter(budgetQuery);
 
-            const { data: currentBudgets, error: budgetError } = await expenseQuery;
+            const { data: fetchedBudgets, error: budgetError } = await budgetQuery;
 
             if (budgetError) throw budgetError;
+            
+            // Filter budgets that are active in the selected month
+            const currentBudgets = fetchedBudgets?.filter(budget => {
+                if (!budget.end_date) return true;
+                return budget.end_date >= startDateStr;
+            });
 
             // Fetch Allocations for CURRENT MONTH (to show in list)
             // Allocations don't have household_id directly, they link to budgets.
@@ -125,7 +135,45 @@ const GoalAllocation = () => {
 
             setAllocations(filteredAllocations as unknown as BudgetAllocation[]);
 
-            // --- Aggregation Logic ---
+            // --- Auto-mark allocated budgets as 'done' if actual transactions cover the allocated amount ---
+            if (filteredAllocations.length > 0) {
+                const startDateStr = format(startOfMonth(selectedMonth), "yyyy-MM-dd");
+                const endDateStr = format(endOfMonth(selectedMonth), "yyyy-MM-dd");
+
+                // Fetch actual expense + investment transactions this month
+                const [{ data: expTxns }, { data: invTxns }] = await Promise.all([
+                    applyScopeFilter(supabase.from("transactions").select("amount, category").eq("type", "expense")
+                        .gte("transaction_date", startDateStr).lte("transaction_date", endDateStr)),
+                    applyScopeFilter(supabase.from("transactions").select("amount, category").eq("type", "investment")
+                        .gte("transaction_date", startDateStr).lte("transaction_date", endDateStr)),
+                ]);
+
+                const txnCatMap: Record<string, number> = {};
+                [...(expTxns || []), ...(invTxns || [])].forEach((txn: any) => {
+                    txnCatMap[txn.category] = (txnCatMap[txn.category] || 0) + Number(txn.amount);
+                });
+
+                // Group allocations by expense_budget_id
+                const expenseBudgetTotalMap: Record<string, { category: string; allocated: number }> = {};
+                filteredAllocations.forEach((alloc: any) => {
+                    const ebId = alloc.expense_budget_id;
+                    const cat = alloc.expense_budget?.category;
+                    if (!ebId || !cat) return;
+                    if (!expenseBudgetTotalMap[ebId]) expenseBudgetTotalMap[ebId] = { category: cat, allocated: 0 };
+                    expenseBudgetTotalMap[ebId].allocated += Number(alloc.allocated_amount);
+                });
+
+                // Check each and mark as done if fully utilized
+                await Promise.all(
+                    Object.entries(expenseBudgetTotalMap).map(async ([budgetId, { category, allocated }]) => {
+                        const utilized = txnCatMap[category] || 0;
+                        if (utilized >= allocated) {
+                            await supabase.from("monthly_budgets").update({ interval: 'done' }).eq("id", budgetId).neq("interval", "done");
+                        }
+                    })
+                );
+            }
+
 
             // 1. Fetch ALL historic INCOME transactions
             // Scope applies here too
@@ -210,38 +258,93 @@ const GoalAllocation = () => {
             });
 
             // 5. Construct the list of "Income Sources" for the dropdown
+            const currentIncomeBudgets = currentBudgets?.filter(b => b.type === "income") || [];
             const derivedIncomeBudgets: MonthlyBudget[] = [];
             const available: Record<string, number> = {};
 
-            presentCategories.forEach(category => {
+            const categoriesToProcess = new Set<string>();
+            
+            // Add planned income categories for the selected month ONLY
+            currentIncomeBudgets.forEach(b => categoriesToProcess.add(b.category));
+
+            categoriesToProcess.forEach(category => {
                 let budgetId = categoryToBudgetId[category];
                 let budgetObj = categoryToBudgetObj[category];
 
-                // If no budget exists for this earning category, create a virtual one for the UI
+                // If no historic budget exists for this earning category
                 if (!budgetId) {
-                    budgetId = `virtual-${category}`;
-                    budgetObj = {
-                        id: budgetId,
-                        category: category,
-                        planned_amount: 0,
-                        type: "income",
-                        interval: "Irregular", // Default for unbudgeted income
-                        household_id: scope === "family" && household ? household.id : null
-                    } as MonthlyBudget;
+                    // Try to find if it's in the current month's planned goals
+                    const currentObj = currentIncomeBudgets.find(b => b.category === category);
+                    if (currentObj) {
+                        budgetId = currentObj.id;
+                        budgetObj = currentObj as MonthlyBudget;
+                        // update maps for future references
+                        categoryToBudgetId[category] = budgetId;
+                        categoryToBudgetObj[category] = budgetObj;
+                    } else {
+                        // Otherwise create a virtual one for unbudgeted available income
+                        budgetId = `virtual-${category}`;
+                        budgetObj = {
+                            id: budgetId,
+                            category: category,
+                            planned_amount: 0,
+                            type: "income",
+                            interval: "Irregular",
+                            household_id: scope === "family" && household ? household.id : null
+                        } as MonthlyBudget;
+                    }
                 }
 
                 derivedIncomeBudgets.push(budgetObj);
 
                 const totalIncome = incomeMap[category] || 0;
                 const totalAllocated = allocatedMap[category] || 0;
-                available[budgetId] = totalIncome - totalAllocated;
+                
+                // Amount available = actual income - allocated 
+                let categoryAvailable = totalIncome - totalAllocated;
+                
+                // Fallback to planned amount for allocation if actual is less than planned?
+                // The user request suggests calculating "available as per earning category specific data"
+                // So we stick to actual available based on data.
+                available[budgetId] = categoryAvailable;
             });
 
             setIncomeBudgets(derivedIncomeBudgets);
             setAvailableAmounts(available);
 
-            const expense = (currentBudgets?.filter(b => b.type === "expense") || []) as MonthlyBudget[];
-            setExpenseBudgets(expense);
+            const expense = (currentBudgets?.filter(b => b.type === "expense" && b.interval !== 'done') || []) as MonthlyBudget[];
+            
+            const plannedExpenseCategories = new Set(expense.map(b => b.category));
+            const virtualExpenses: MonthlyBudget[] = [];
+            
+            
+            EXPENSE_CATEGORIES.forEach(category => {
+                if (!plannedExpenseCategories.has(category)) {
+                    virtualExpenses.push({
+                        id: `virtual-${category}`,
+                        category: category,
+                        planned_amount: 0,
+                        type: "expense",
+                        interval: "Irregular",
+                        household_id: scope === "family" && household ? household.id : null
+                    });
+                }
+            });
+
+            INVESTMENT_CATEGORIES.forEach(category => {
+                if (!plannedExpenseCategories.has(category)) {
+                    virtualExpenses.push({
+                        id: `virtual-${category}`,
+                        category: category,
+                        planned_amount: 0,
+                        type: "expense",
+                        interval: "Irregular",
+                        household_id: scope === "family" && household ? household.id : null
+                    });
+                }
+            });
+
+            setExpenseBudgets([...expense, ...virtualExpenses]);
 
         } catch (error) {
             console.error("Error fetching data:", error);
@@ -298,17 +401,61 @@ const GoalAllocation = () => {
                 finalIncomeId = newBudget.id;
             }
 
-            const { error } = await supabase
+            let finalExpenseId = selectedExpenseId;
+            if (selectedExpenseId.startsWith("virtual-")) {
+                const categoryName = selectedExpenseId.replace("virtual-", "");
+                const { data: newBudget, error: createError } = await supabase
+                    .from("monthly_budgets")
+                    .insert({
+                        user_id: user?.id,
+                        category: categoryName,
+                        month_year: monthStr,
+                        start_date: monthStr,
+                        type: "expense",
+                        planned_amount: 0,
+                        interval: "pending",
+                        household_id: scope === "family" && household ? household.id : null
+                    })
+                    .select()
+                    .single();
+
+                if (createError) throw createError;
+                finalExpenseId = newBudget.id;
+            }
+
+            const { error: allocError } = await supabase
                 .from("budget_allocations")
                 .insert({
                     income_budget_id: finalIncomeId,
-                    expense_budget_id: selectedExpenseId,
+                    expense_budget_id: finalExpenseId,
                     allocated_amount: amountNum,
                     month_year: monthStr,
                     user_id: user?.id
                 });
 
-            if (error) throw error;
+            if (allocError) throw allocError;
+
+            // Check if Income Goal is fully utilized
+            const { data: incomeAllocs } = await supabase
+                .from("budget_allocations")
+                .select("allocated_amount")
+                .eq("income_budget_id", finalIncomeId);
+            const totalIncomeAlloc = incomeAllocs?.reduce((sum, a) => sum + Number(a.allocated_amount), 0) || 0;
+            const { data: incBudget } = await supabase.from("monthly_budgets").select("planned_amount").eq("id", finalIncomeId).single();
+            if (incBudget && Number(incBudget.planned_amount) > 0 && totalIncomeAlloc >= Number(incBudget.planned_amount)) {
+                await supabase.from("monthly_budgets").update({ interval: 'done' }).eq("id", finalIncomeId);
+            }
+
+            // Check if Expense Goal is fully utilized
+            const { data: expAllocs } = await supabase
+                .from("budget_allocations")
+                .select("allocated_amount")
+                .eq("expense_budget_id", finalExpenseId);
+            const totalExpAlloc = expAllocs?.reduce((sum, a) => sum + Number(a.allocated_amount), 0) || 0;
+            const { data: expBudget } = await supabase.from("monthly_budgets").select("planned_amount").eq("id", finalExpenseId).single();
+            if (expBudget && Number(expBudget.planned_amount) > 0 && totalExpAlloc >= Number(expBudget.planned_amount)) {
+                await supabase.from("monthly_budgets").update({ interval: 'done' }).eq("id", finalExpenseId);
+            }
 
             toast.success("Allocation created successfully");
             setAmount("");
@@ -317,6 +464,41 @@ const GoalAllocation = () => {
         } catch (error) {
             console.error(error);
             toast.error("Failed to create allocation");
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const handleEditAllocSubmit = async (alloc: BudgetAllocation) => {
+        const newAmount = parseFloat(editAllocAmount);
+        if (isNaN(newAmount) || newAmount <= 0) {
+            toast.error("Please enter a valid amount");
+            return;
+        }
+
+        const currentAvail = availableAmounts[alloc.income_budget_id] || 0;
+        const maxAvailable = currentAvail + Number(alloc.allocated_amount);
+
+        if (newAmount > maxAvailable) {
+            toast.error(`Amount exceeds available balance (${maxAvailable})`);
+            return;
+        }
+
+        setLoading(true);
+        try {
+            const { error } = await supabase
+                .from("budget_allocations")
+                .update({ allocated_amount: newAmount })
+                .eq("id", alloc.id);
+
+            if (error) throw error;
+            
+            toast.success("Allocation updated successfully");
+            setEditingAllocId(null);
+            fetchData();
+        } catch (error) {
+            console.error(error);
+            toast.error("Failed to update allocation");
         } finally {
             setLoading(false);
         }
@@ -451,7 +633,40 @@ const GoalAllocation = () => {
                                                     {alloc.income_budget?.interval} to {alloc.expense_budget?.interval}
                                                 </p>
                                             </div>
-                                            <p className="font-bold">₹{alloc.allocated_amount}</p>
+                                            <div className="flex items-center gap-2">
+                                                {editingAllocId === alloc.id ? (
+                                                    <div className="flex items-center gap-1">
+                                                        <Input 
+                                                            className="w-24 h-8" 
+                                                            type="number" 
+                                                            value={editAllocAmount}
+                                                            onChange={(e) => setEditAllocAmount(e.target.value)}
+                                                            autoFocus
+                                                        />
+                                                        <Button size="icon" variant="ghost" className="h-8 w-8 text-green-600" onClick={() => handleEditAllocSubmit(alloc)} disabled={loading}>
+                                                            <Check className="h-4 w-4" />
+                                                        </Button>
+                                                        <Button size="icon" variant="ghost" className="h-8 w-8 text-destructive" onClick={() => setEditingAllocId(null)} disabled={loading}>
+                                                            <X className="h-4 w-4" />
+                                                        </Button>
+                                                    </div>
+                                                ) : (
+                                                    <>
+                                                        <p className="font-bold">₹{alloc.allocated_amount}</p>
+                                                        <Button 
+                                                            size="icon" 
+                                                            variant="ghost" 
+                                                            className="h-8 w-8 text-muted-foreground hover:text-foreground"
+                                                            onClick={() => {
+                                                                setEditingAllocId(alloc.id);
+                                                                setEditAllocAmount(alloc.allocated_amount.toString());
+                                                            }}
+                                                        >
+                                                            <Pencil className="h-4 w-4" />
+                                                        </Button>
+                                                    </>
+                                                )}
+                                            </div>
                                         </div>
                                     ))
                                 )}

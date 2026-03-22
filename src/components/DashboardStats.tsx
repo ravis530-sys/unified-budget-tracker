@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { TrendingUp, TrendingDown, Wallet, PiggyBank, DollarSign, TrendingUpDown } from "lucide-react";
+import { TrendingUp, TrendingDown, Wallet, PiggyBank, DollarSign, TrendingUpDown, ChevronDown, ChevronUp, ArrowRight, ArrowLeft } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import { format, startOfMonth, endOfMonth } from "date-fns";
 
 interface Stats {
@@ -11,6 +12,9 @@ interface Stats {
   totalInvestments: number;
   netBalance: number;
   savingsRate: number;
+  allocatedAmount: number;
+  savedForNextMonth: number;
+  utilizedExpenses: number;
 }
 
 interface DashboardStatsProps {
@@ -26,8 +30,12 @@ const DashboardStats = ({ scope, selectedMonth = new Date() }: DashboardStatsPro
     totalInvestments: 0,
     netBalance: 0,
     savingsRate: 0,
+    allocatedAmount: 0,
+    savedForNextMonth: 0,
+    utilizedExpenses: 0,
   });
   const [loading, setLoading] = useState(true);
+  const [showAllocations, setShowAllocations] = useState(false);
 
   useEffect(() => {
     fetchStats();
@@ -108,7 +116,7 @@ const DashboardStats = ({ scope, selectedMonth = new Date() }: DashboardStatsPro
       // Fetch expenses from selected month
       let currentExpensesQuery = supabase
         .from("transactions")
-        .select("amount")
+        .select("amount, category")
         .eq("type", "expense")
         .gte("transaction_date", currentMonthStart)
         .lte("transaction_date", currentMonthEnd);
@@ -124,7 +132,7 @@ const DashboardStats = ({ scope, selectedMonth = new Date() }: DashboardStatsPro
       // Fetch current month earnings
       let currentEarningsQuery = supabase
         .from("transactions")
-        .select("amount")
+        .select("amount, category")
         .eq("type", "income")
         .gte("transaction_date", currentMonthStart)
         .lte("transaction_date", currentMonthEnd);
@@ -155,7 +163,7 @@ const DashboardStats = ({ scope, selectedMonth = new Date() }: DashboardStatsPro
       // Fetch current month investments
       let currentInvestmentsQuery = supabase
         .from("transactions")
-        .select("amount")
+        .select("amount, category")
         .eq("type", "investment")
         .gte("transaction_date", currentMonthStart)
         .lte("transaction_date", currentMonthEnd);
@@ -168,6 +176,41 @@ const DashboardStats = ({ scope, selectedMonth = new Date() }: DashboardStatsPro
 
       const { data: currentInvestments } = await currentInvestmentsQuery;
 
+      // Fetch current month allocations
+      const currentAllocMonthStr = format(startOfMonth(selectedMonth), "yyyy-MM-01");
+      const { data: currentAllocationsList } = await supabase
+        .from("budget_allocations")
+        .select(`
+          allocated_amount,
+          income_budget:monthly_budgets!fk_income_budget(household_id, category),
+          expense_budget:monthly_budgets!fk_expense_budget(category)
+        `)
+        .eq("month_year", currentAllocMonthStr);
+
+      let totalAllocated = 0;
+      const allocatedIncomeMap: Record<string, number> = {};
+      const allocatedExpenseMap: Record<string, number> = {};
+
+      const filteredAllocations = currentAllocationsList?.filter((alloc: any) => {
+        if (scope === "individual") {
+          return !alloc.income_budget?.household_id;
+        } else {
+          return alloc.income_budget?.household_id === householdId;
+        }
+      }) || [];
+
+      filteredAllocations.forEach((alloc: any) => {
+        const amt = Number(alloc.allocated_amount);
+        totalAllocated += amt;
+
+        if (alloc.income_budget?.category) {
+            allocatedIncomeMap[alloc.income_budget.category] = (allocatedIncomeMap[alloc.income_budget.category] || 0) + amt;
+        }
+        if (alloc.expense_budget?.category) {
+            allocatedExpenseMap[alloc.expense_budget.category] = (allocatedExpenseMap[alloc.expense_budget.category] || 0) + amt;
+        }
+      });
+
 
       const totalPreviousEarnings = earnings?.reduce((sum, t) => sum + Number(t.amount), 0) || 0;
       const totalPreviousExpenses = previousExpenses?.reduce((sum, t) => sum + Number(t.amount), 0) || 0;
@@ -176,25 +219,79 @@ const DashboardStats = ({ scope, selectedMonth = new Date() }: DashboardStatsPro
       // Total Saved = Total Previous Earnings - Total Previous Expenses - Total Previous Investments
       const totalSaved = totalPreviousEarnings - totalPreviousExpenses - totalPreviousInvestments;
 
-      const totalCurrentExpenses = currentExpenses?.reduce((sum, t) => sum + Number(t.amount), 0) || 0;
-      const totalCurrentEarnings = currentEarningsData?.reduce((sum, t) => sum + Number(t.amount), 0) || 0;
+      // Actual totals for Net Balance
+      const totalCurrentExpensesActual = currentExpenses?.reduce((sum, t) => sum + Number(t.amount), 0) || 0;
+      const totalCurrentEarningsActual = currentEarningsData?.reduce((sum, t) => sum + Number(t.amount), 0) || 0;
       const totalCurrentInvestments = currentInvestments?.reduce((sum, t) => sum + Number(t.amount), 0) || 0;
+
+      // Calculate category-level Unallocated Earnings
+      let totalCurrentEarningsUnalloc = 0;
+      const incomeTxnMap: Record<string, number> = {};
+      currentEarningsData?.forEach(txn => {
+          incomeTxnMap[txn.category] = (incomeTxnMap[txn.category] || 0) + Number(txn.amount);
+      });
+      Object.entries(incomeTxnMap).forEach(([cat, amt]) => {
+          const allocated = allocatedIncomeMap[cat] || 0;
+          totalCurrentEarningsUnalloc += Math.max(0, amt - allocated);
+      });
+
+      // Calculate category-level Unallocated Expenses
+      let totalCurrentExpensesUnalloc = 0;
+      const expenseTxnMap: Record<string, number> = {};
+      currentExpenses?.forEach(txn => {
+          expenseTxnMap[txn.category] = (expenseTxnMap[txn.category] || 0) + Number(txn.amount);
+      });
+      Object.entries(expenseTxnMap).forEach(([cat, amt]) => {
+          const allocated = allocatedExpenseMap[cat] || 0;
+          totalCurrentExpensesUnalloc += Math.max(0, amt - allocated);
+      });
+
+      // Build investment transaction map (for investment allocations like MF, SIP etc.)
+      const investmentTxnMap: Record<string, number> = {};
+      currentInvestments?.forEach((txn: any) => {
+          investmentTxnMap[txn.category] = (investmentTxnMap[txn.category] || 0) + Number(txn.amount);
+      });
+
+      // Calculate unutilized allocations (Allocated - actual spend per allocated category)
+      // Uses both expense AND investment transaction maps to handle investment-type allocations
+      let unutilizedAllocated = 0;
+      Object.entries(allocatedExpenseMap).forEach(([cat, allocatedAmt]) => {
+          const spentAmt = (expenseTxnMap[cat] || 0) + (investmentTxnMap[cat] || 0);
+          unutilizedAllocated += Math.max(0, allocatedAmt - spentAmt);
+      });
+
+      // Utilized = total allocated minus what's still unspent
+      const utilizedExpenses = totalAllocated - unutilizedAllocated;
+
+      // Remaining from allocated SOURCE earnings only (not all income)
+      // e.g. Salary earned 183505, allocated 180000 → remaining = 3505
+      let remainingAllocatedSourceEarnings = 0;
+      Object.entries(allocatedIncomeMap).forEach(([cat, allocatedFromCat]) => {
+          const earnedInCat = incomeTxnMap[cat] || 0;
+          remainingAllocatedSourceEarnings += Math.max(0, earnedInCat - allocatedFromCat);
+      });
+
+      // Saved For Next Month = remaining allocated source earnings + unutilized goal allocations
+      const savedForNextMonth = remainingAllocatedSourceEarnings + unutilizedAllocated;
 
       // Net Balance = Total Saved + Current Month Earnings - Current Month Expenses - Current Month Investments
       // This gives the actual available balance for the current month
-      const netBalance = totalSaved + totalCurrentEarnings - totalCurrentExpenses - totalCurrentInvestments;
+      const netBalance = totalSaved + totalCurrentEarningsActual - totalCurrentExpensesActual - totalCurrentInvestments;
 
       // Savings Rate = (Net Balance / (Total Saved + Current Earnings)) * 100 (percentage of total available funds remaining)
-      const totalAvailable = totalSaved + totalCurrentEarnings;
+      const totalAvailable = totalSaved + totalCurrentEarningsActual;
       const savingsRate = totalAvailable > 0 ? (netBalance / totalAvailable) * 100 : 0;
 
       setStats({
         accumulatedSavings: totalSaved,
-        currentEarnings: totalCurrentEarnings,
-        totalExpenses: totalCurrentExpenses,
+        currentEarnings: totalCurrentEarningsUnalloc,
+        totalExpenses: totalCurrentExpensesUnalloc,
         totalInvestments: totalCurrentInvestments,
         netBalance,
         savingsRate,
+        allocatedAmount: totalAllocated,
+        savedForNextMonth,
+        utilizedExpenses,
       });
     } catch (error) {
       console.error("Error fetching stats:", error);
@@ -229,95 +326,149 @@ const DashboardStats = ({ scope, selectedMonth = new Date() }: DashboardStatsPro
   }
 
   return (
-    <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-6">
-      <Card>
-        <CardHeader className="flex flex-row items-center justify-between pb-2">
-          <CardTitle className="text-sm font-medium text-muted-foreground">
-            Total Saved
-          </CardTitle>
-          <Wallet className="h-4 w-4 text-primary" />
-        </CardHeader>
-        <CardContent>
-          <div className="text-2xl font-bold text-primary">
-            {formatCurrency(stats.accumulatedSavings)}
-          </div>
-          <p className="text-xs text-muted-foreground mt-1">Accumulated (Prev Months)</p>
-        </CardContent>
-      </Card>
+    <div className="space-y-4">
+      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-6">
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between pb-2">
+            <CardTitle className="text-sm font-medium text-muted-foreground">
+              Total Saved
+            </CardTitle>
+            <Wallet className="h-4 w-4 text-primary" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold text-primary">
+              {formatCurrency(stats.accumulatedSavings)}
+            </div>
+            <p className="text-xs text-muted-foreground mt-1">Accumulated (Prev Months)</p>
+          </CardContent>
+        </Card>
 
-      <Card>
-        <CardHeader className="flex flex-row items-center justify-between pb-2">
-          <CardTitle className="text-sm font-medium text-muted-foreground">
-            Month Earnings
-          </CardTitle>
-          <TrendingUp className="h-4 w-4 text-green-600" />
-        </CardHeader>
-        <CardContent>
-          <div className="text-2xl font-bold text-green-600">
-            {formatCurrency(stats.currentEarnings)}
-          </div>
-          <p className="text-xs text-muted-foreground mt-1">This month</p>
-        </CardContent>
-      </Card>
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between pb-2">
+            <CardTitle className="text-sm font-medium text-muted-foreground">
+              Month Earnings
+            </CardTitle>
+            <TrendingUp className="h-4 w-4 text-green-600" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold text-green-600">
+              {formatCurrency(stats.currentEarnings)}
+            </div>
+            <p className="text-xs text-muted-foreground mt-1">This month</p>
+          </CardContent>
+        </Card>
 
-      <Card>
-        <CardHeader className="flex flex-row items-center justify-between pb-2">
-          <CardTitle className="text-sm font-medium text-muted-foreground">
-            Total Expenses
-          </CardTitle>
-          <TrendingDown className="h-4 w-4 text-destructive" />
-        </CardHeader>
-        <CardContent>
-          <div className="text-2xl font-bold text-destructive">
-            {formatCurrency(stats.totalExpenses)}
-          </div>
-          <p className="text-xs text-muted-foreground mt-1">This month</p>
-        </CardContent>
-      </Card>
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between pb-2">
+            <CardTitle className="text-sm font-medium text-muted-foreground">
+              Total Expenses
+            </CardTitle>
+            <TrendingDown className="h-4 w-4 text-destructive" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold text-destructive">
+              {formatCurrency(stats.totalExpenses)}
+            </div>
+            <p className="text-xs text-muted-foreground mt-1">This month</p>
+          </CardContent>
+        </Card>
 
-      <Card>
-        <CardHeader className="flex flex-row items-center justify-between pb-2">
-          <CardTitle className="text-sm font-medium text-muted-foreground">
-            Total Investments
-          </CardTitle>
-          <TrendingUpDown className="h-4 w-4 text-orange-600" />
-        </CardHeader>
-        <CardContent>
-          <div className="text-2xl font-bold text-orange-600">
-            {formatCurrency(stats.totalInvestments)}
-          </div>
-          <p className="text-xs text-muted-foreground mt-1">This month</p>
-        </CardContent>
-      </Card>
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between pb-2">
+            <CardTitle className="text-sm font-medium text-muted-foreground">
+              Total Investments
+            </CardTitle>
+            <TrendingUpDown className="h-4 w-4 text-orange-600" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold text-orange-600">
+              {formatCurrency(stats.totalInvestments)}
+            </div>
+            <p className="text-xs text-muted-foreground mt-1">This month</p>
+          </CardContent>
+        </Card>
 
-      <Card>
-        <CardHeader className="flex flex-row items-center justify-between pb-2">
-          <CardTitle className="text-sm font-medium text-muted-foreground">
-            Net Balance
-          </CardTitle>
-          <DollarSign className="h-4 w-4 text-blue-600" />
-        </CardHeader>
-        <CardContent>
-          <div className={`text-2xl font-bold ${stats.netBalance >= 0 ? "text-success" : "text-destructive"}`}>
-            {formatCurrency(stats.netBalance)}
-          </div>
-          <p className="text-xs text-muted-foreground mt-1">Available this month</p>
-        </CardContent>
-      </Card>
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between pb-2">
+            <CardTitle className="text-sm font-medium text-muted-foreground">
+              Net Balance
+            </CardTitle>
+            <DollarSign className="h-4 w-4 text-blue-600" />
+          </CardHeader>
+          <CardContent>
+            <div className={`text-2xl font-bold ${stats.netBalance >= 0 ? "text-success" : "text-destructive"}`}>
+              {formatCurrency(stats.netBalance)}
+            </div>
+            <p className="text-xs text-muted-foreground mt-1">Actual available cash</p>
+          </CardContent>
+        </Card>
 
-      <Card>
-        <CardHeader className="flex flex-row items-center justify-between pb-2">
-          <CardTitle className="text-sm font-medium text-muted-foreground">
-            Savings Rate
-          </CardTitle>
-          <PiggyBank className="h-4 w-4 text-accent" />
-        </CardHeader>
-        <CardContent>
-          <div className="text-2xl font-bold text-accent">
-            {stats.savingsRate.toFixed(1)}%
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between pb-2">
+            <CardTitle className="text-sm font-medium text-muted-foreground">
+              Savings Rate
+            </CardTitle>
+            <PiggyBank className="h-4 w-4 text-accent" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold text-accent">
+              {stats.savingsRate.toFixed(1)}%
+            </div>
+            <p className="text-xs text-muted-foreground mt-1">Of total saved</p>
+          </CardContent>
+        </Card>
+      </div>
+
+      <Card className="border shadow-sm">
+        <CardHeader
+          className="flex flex-row items-center justify-between cursor-pointer select-none py-4 px-6 hover:bg-muted/40 transition-colors rounded-t-xl"
+          onClick={() => setShowAllocations(!showAllocations)}
+        >
+          <div>
+            <CardTitle className="text-base font-semibold">Advanced Allocation Tracking</CardTitle>
+            <p className="text-xs text-muted-foreground mt-0.5">Breakdown of allocated vs. utilized funds</p>
           </div>
-          <p className="text-xs text-muted-foreground mt-1">Of total saved</p>
-        </CardContent>
+          {showAllocations ? <ChevronUp className="h-4 w-4 text-muted-foreground" /> : <ChevronDown className="h-4 w-4 text-muted-foreground" />}
+        </CardHeader>
+
+        {showAllocations && (
+          <CardContent className="px-6 pb-6 pt-0">
+            <div className="grid gap-4 md:grid-cols-3">
+              <Card className="border bg-muted/20 shadow-none">
+                <CardHeader className="flex flex-row items-center justify-between pb-2">
+                  <CardTitle className="text-sm font-medium text-muted-foreground">Allocated Earnings</CardTitle>
+                  <ArrowLeft className="h-4 w-4 text-primary" />
+                </CardHeader>
+                <CardContent>
+                  <div className="text-2xl font-bold text-primary">{formatCurrency(stats.allocatedAmount)}</div>
+                  <p className="text-xs text-muted-foreground mt-1">Assigned to goals</p>
+                </CardContent>
+              </Card>
+
+              <Card className="border bg-muted/20 shadow-none">
+                <CardHeader className="flex flex-row items-center justify-between pb-2">
+                  <CardTitle className="text-sm font-medium text-muted-foreground">Utilized Expenses</CardTitle>
+                  <ArrowRight className="h-4 w-4 text-destructive" />
+                </CardHeader>
+                <CardContent>
+                  <div className="text-2xl font-bold text-destructive">{formatCurrency(stats.utilizedExpenses)}</div>
+                  <p className="text-xs text-muted-foreground mt-1">Actual spend from allocated goals</p>
+                </CardContent>
+              </Card>
+
+              <Card className="border bg-muted/20 shadow-none">
+                <CardHeader className="flex flex-row items-center justify-between pb-2">
+                  <CardTitle className="text-sm font-medium text-muted-foreground">Saved For Next Month</CardTitle>
+                  <PiggyBank className="h-4 w-4 text-green-600" />
+                </CardHeader>
+                <CardContent>
+                  <div className="text-2xl font-bold text-green-600">{formatCurrency(stats.savedForNextMonth)}</div>
+                  <p className="text-xs text-muted-foreground mt-1">Remaining source &amp; unutilized goals</p>
+                </CardContent>
+              </Card>
+            </div>
+          </CardContent>
+        )}
       </Card>
     </div>
   );

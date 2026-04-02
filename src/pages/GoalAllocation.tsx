@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { format, endOfMonth, startOfMonth } from "date-fns";
-import { ArrowLeft, Plus, Target, Banknote, Pencil, Check, X } from "lucide-react";
+import { ArrowLeft, Plus, Target, Banknote, Pencil, Check, X, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -504,6 +504,25 @@ const GoalAllocation = () => {
         }
     };
 
+    const handleDeleteAlloc = async (allocId: string) => {
+        if (!confirm("Delete this allocation?")) return;
+        setLoading(true);
+        try {
+            const { error } = await supabase
+                .from("budget_allocations")
+                .delete()
+                .eq("id", allocId);
+            if (error) throw error;
+            toast.success("Allocation deleted");
+            fetchData();
+        } catch (error) {
+            console.error(error);
+            toast.error("Failed to delete allocation");
+        } finally {
+            setLoading(false);
+        }
+    };
+
     const handleScopeChange = (val: string) => {
         setScope(val as "individual" | "family");
     };
@@ -663,6 +682,15 @@ const GoalAllocation = () => {
                                                             }}
                                                         >
                                                             <Pencil className="h-4 w-4" />
+                                                        </Button>
+                                                        <Button
+                                                            size="icon"
+                                                            variant="ghost"
+                                                            className="h-8 w-8 text-destructive hover:text-destructive"
+                                                            onClick={() => handleDeleteAlloc(alloc.id)}
+                                                            disabled={loading}
+                                                        >
+                                                            <Trash2 className="h-4 w-4" />
                                                         </Button>
                                                     </>
                                                 )}

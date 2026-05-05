@@ -43,6 +43,7 @@ const GoalAllocation = () => {
     const [expenseBudgets, setExpenseBudgets] = useState<MonthlyBudget[]>([]);
     const [allocations, setAllocations] = useState<BudgetAllocation[]>([]);
     const [availableAmounts, setAvailableAmounts] = useState<Record<string, number>>({});
+    const [spentAmounts, setSpentAmounts] = useState<Record<string, number>>({});
 
     const [selectedIncomeId, setSelectedIncomeId] = useState("");
     const [selectedExpenseId, setSelectedExpenseId] = useState("");
@@ -135,24 +136,26 @@ const GoalAllocation = () => {
 
             setAllocations(filteredAllocations as unknown as BudgetAllocation[]);
 
+            // --- Fetch actual spend per expense category for this month ---
+            const startDateStr = format(startOfMonth(selectedMonth), "yyyy-MM-dd");
+            const endDateStr2 = format(endOfMonth(selectedMonth), "yyyy-MM-dd");
+
+            const [{ data: expTxns }, { data: invTxns }] = await Promise.all([
+                applyScopeFilter(supabase.from("transactions").select("amount, category").eq("type", "expense")
+                    .gte("transaction_date", startDateStr).lte("transaction_date", endDateStr2)),
+                applyScopeFilter(supabase.from("transactions").select("amount, category").eq("type", "investment")
+                    .gte("transaction_date", startDateStr).lte("transaction_date", endDateStr2)),
+            ]);
+
+            const txnCatMap: Record<string, number> = {};
+            [...(expTxns || []), ...(invTxns || [])].forEach((txn: any) => {
+                txnCatMap[txn.category] = (txnCatMap[txn.category] || 0) + Number(txn.amount);
+            });
+
+            setSpentAmounts(txnCatMap);
+
             // --- Auto-mark allocated budgets as 'done' if actual transactions cover the allocated amount ---
             if (filteredAllocations.length > 0) {
-                const startDateStr = format(startOfMonth(selectedMonth), "yyyy-MM-dd");
-                const endDateStr = format(endOfMonth(selectedMonth), "yyyy-MM-dd");
-
-                // Fetch actual expense + investment transactions this month
-                const [{ data: expTxns }, { data: invTxns }] = await Promise.all([
-                    applyScopeFilter(supabase.from("transactions").select("amount, category").eq("type", "expense")
-                        .gte("transaction_date", startDateStr).lte("transaction_date", endDateStr)),
-                    applyScopeFilter(supabase.from("transactions").select("amount, category").eq("type", "investment")
-                        .gte("transaction_date", startDateStr).lte("transaction_date", endDateStr)),
-                ]);
-
-                const txnCatMap: Record<string, number> = {};
-                [...(expTxns || []), ...(invTxns || [])].forEach((txn: any) => {
-                    txnCatMap[txn.category] = (txnCatMap[txn.category] || 0) + Number(txn.amount);
-                });
-
                 // Group allocations by expense_budget_id
                 const expenseBudgetTotalMap: Record<string, { category: string; allocated: number }> = {};
                 filteredAllocations.forEach((alloc: any) => {
@@ -638,65 +641,105 @@ const GoalAllocation = () => {
                                 {allocations.length === 0 ? (
                                     <p className="text-center text-muted-foreground py-4">No allocations yet</p>
                                 ) : (
-                                    allocations.map(alloc => (
-                                        <div key={alloc.id} className="flex items-center justify-between p-3 border rounded-lg bg-card shadow-sm">
-                                            <div className="space-y-1">
-                                                <div className="flex items-center gap-2 text-sm font-medium">
-                                                    <Banknote className="h-4 w-4 text-green-500" />
-                                                    <span>{alloc.income_budget?.category}</span>
-                                                    <span className="text-muted-foreground">→</span>
-                                                    <Target className="h-4 w-4 text-blue-500" />
-                                                    <span>{alloc.expense_budget?.category}</span>
-                                                </div>
-                                                <p className="text-xs text-muted-foreground">
-                                                    {alloc.income_budget?.interval} to {alloc.expense_budget?.interval}
-                                                </p>
-                                            </div>
-                                            <div className="flex items-center gap-2">
-                                                {editingAllocId === alloc.id ? (
-                                                    <div className="flex items-center gap-1">
-                                                        <Input 
-                                                            className="w-24 h-8" 
-                                                            type="number" 
-                                                            value={editAllocAmount}
-                                                            onChange={(e) => setEditAllocAmount(e.target.value)}
-                                                            autoFocus
-                                                        />
-                                                        <Button size="icon" variant="ghost" className="h-8 w-8 text-green-600" onClick={() => handleEditAllocSubmit(alloc)} disabled={loading}>
-                                                            <Check className="h-4 w-4" />
-                                                        </Button>
-                                                        <Button size="icon" variant="ghost" className="h-8 w-8 text-destructive" onClick={() => setEditingAllocId(null)} disabled={loading}>
-                                                            <X className="h-4 w-4" />
-                                                        </Button>
+                                    allocations.map(alloc => {
+                                        const expCat = alloc.expense_budget?.category || "";
+                                        const allocated = Number(alloc.allocated_amount);
+                                        const spent = spentAmounts[expCat] || 0;
+                                        const pct = allocated > 0 ? Math.min((spent / allocated) * 100, 100) : 0;
+                                        const isOver = spent > allocated;
+                                        const isNear = !isOver && pct >= 80;
+                                        const barColor = isOver
+                                            ? "bg-red-500"
+                                            : isNear
+                                            ? "bg-amber-500"
+                                            : "bg-green-500";
+                                        const spentColor = isOver
+                                            ? "text-red-600"
+                                            : isNear
+                                            ? "text-amber-600"
+                                            : "text-green-600";
+                                        return (
+                                            <div key={alloc.id} className="p-3 border rounded-lg bg-card shadow-sm space-y-2">
+                                                <div className="flex items-center justify-between">
+                                                    <div className="space-y-0.5">
+                                                        <div className="flex items-center gap-2 text-sm font-medium">
+                                                            <Banknote className="h-4 w-4 text-green-500" />
+                                                            <span>{alloc.income_budget?.category}</span>
+                                                            <span className="text-muted-foreground">→</span>
+                                                            <Target className="h-4 w-4 text-blue-500" />
+                                                            <span>{alloc.expense_budget?.category}</span>
+                                                        </div>
+                                                        <p className="text-xs text-muted-foreground">
+                                                            {alloc.income_budget?.interval} to {alloc.expense_budget?.interval}
+                                                        </p>
                                                     </div>
-                                                ) : (
-                                                    <>
-                                                        <p className="font-bold">₹{alloc.allocated_amount}</p>
-                                                        <Button 
-                                                            size="icon" 
-                                                            variant="ghost" 
-                                                            className="h-8 w-8 text-muted-foreground hover:text-foreground"
-                                                            onClick={() => {
-                                                                setEditingAllocId(alloc.id);
-                                                                setEditAllocAmount(alloc.allocated_amount.toString());
-                                                            }}
-                                                        >
-                                                            <Pencil className="h-4 w-4" />
-                                                        </Button>
-                                                        <Button
-                                                            size="icon"
-                                                            variant="ghost"
-                                                            className="h-8 w-8 text-destructive hover:text-destructive"
-                                                            onClick={() => handleDeleteAlloc(alloc.id)}
-                                                            disabled={loading}
-                                                        >
-                                                            <Trash2 className="h-4 w-4" />
-                                                        </Button>
-                                                    </>
-                                                )}
+                                                    <div className="flex items-center gap-2">
+                                                        {editingAllocId === alloc.id ? (
+                                                            <div className="flex items-center gap-1">
+                                                                <Input
+                                                                    className="w-24 h-8"
+                                                                    type="number"
+                                                                    value={editAllocAmount}
+                                                                    onChange={(e) => setEditAllocAmount(e.target.value)}
+                                                                    autoFocus
+                                                                />
+                                                                <Button size="icon" variant="ghost" className="h-8 w-8 text-green-600" onClick={() => handleEditAllocSubmit(alloc)} disabled={loading}>
+                                                                    <Check className="h-4 w-4" />
+                                                                </Button>
+                                                                <Button size="icon" variant="ghost" className="h-8 w-8 text-destructive" onClick={() => setEditingAllocId(null)} disabled={loading}>
+                                                                    <X className="h-4 w-4" />
+                                                                </Button>
+                                                            </div>
+                                                        ) : (
+                                                            <>
+                                                                <p className="font-bold">₹{allocated.toLocaleString()}</p>
+                                                                <Button
+                                                                    size="icon"
+                                                                    variant="ghost"
+                                                                    className="h-8 w-8 text-muted-foreground hover:text-foreground"
+                                                                    onClick={() => {
+                                                                        setEditingAllocId(alloc.id);
+                                                                        setEditAllocAmount(alloc.allocated_amount.toString());
+                                                                    }}
+                                                                >
+                                                                    <Pencil className="h-4 w-4" />
+                                                                </Button>
+                                                                <Button
+                                                                    size="icon"
+                                                                    variant="ghost"
+                                                                    className="h-8 w-8 text-destructive hover:text-destructive"
+                                                                    onClick={() => handleDeleteAlloc(alloc.id)}
+                                                                    disabled={loading}
+                                                                >
+                                                                    <Trash2 className="h-4 w-4" />
+                                                                </Button>
+                                                            </>
+                                                        )}
+                                                    </div>
+                                                </div>
+
+                                                {/* Spend utilization bar */}
+                                                <div className="space-y-1">
+                                                    <div className="w-full bg-muted rounded-full h-1.5 overflow-hidden">
+                                                        <div
+                                                            className={`h-1.5 rounded-full transition-all duration-500 ${barColor}`}
+                                                            style={{ width: `${pct}%` }}
+                                                        />
+                                                    </div>
+                                                    <div className="flex justify-between text-xs">
+                                                        <span className={`font-medium ${spentColor}`}>
+                                                            Spent: ₹{spent.toLocaleString()}
+                                                        </span>
+                                                        <span className="text-muted-foreground">
+                                                            {isOver
+                                                                ? `Over by ₹${(spent - allocated).toLocaleString()}`
+                                                                : `₹${(allocated - spent).toLocaleString()} remaining`}
+                                                        </span>
+                                                    </div>
+                                                </div>
                                             </div>
-                                        </div>
-                                    ))
+                                        );
+                                    })
                                 )}
                             </div>
                         </CardContent>

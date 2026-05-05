@@ -137,14 +137,11 @@ const GoalAllocation = () => {
             setAllocations(filteredAllocations as unknown as BudgetAllocation[]);
 
             // --- Fetch actual spend per expense category for this month ---
-            const startDateStr = format(startOfMonth(selectedMonth), "yyyy-MM-dd");
-            const endDateStr2 = format(endOfMonth(selectedMonth), "yyyy-MM-dd");
-
             const [{ data: expTxns }, { data: invTxns }] = await Promise.all([
                 applyScopeFilter(supabase.from("transactions").select("amount, category").eq("type", "expense")
-                    .gte("transaction_date", startDateStr).lte("transaction_date", endDateStr2)),
+                    .gte("transaction_date", startDateStr).lte("transaction_date", endDateStr)),
                 applyScopeFilter(supabase.from("transactions").select("amount, category").eq("type", "investment")
-                    .gte("transaction_date", startDateStr).lte("transaction_date", endDateStr2)),
+                    .gte("transaction_date", startDateStr).lte("transaction_date", endDateStr)),
             ]);
 
             const txnCatMap: Record<string, number> = {};

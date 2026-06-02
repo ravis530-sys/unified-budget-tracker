@@ -17,6 +17,7 @@ export const EXPENSE_CATEGORIES = [
     "School Fees",
     "Travel",
     "Mobile Bill",
+    "Boardband Bill",
     "Utilities",
     "Healthcare",
     "Entertainment",

@@ -9,6 +9,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { toast } from "sonner";
 import { format } from "date-fns";
+import { CreditCard, Smartphone } from "lucide-react";
 
 import { INCOME_CATEGORIES, EXPENSE_CATEGORIES, INTERVALS, INVESTMENT_CATEGORIES, CATEGORY_SUB_ITEMS } from "@/lib/constants";
 
@@ -22,6 +23,7 @@ interface Transaction {
   interval: string;
   remarks: string | null;
   name?: string | null;
+  payment_method?: string | null;
 }
 
 interface AddTransactionDialogProps {
@@ -42,6 +44,7 @@ const AddTransactionDialog = ({ open, onOpenChange, onSuccess, transaction, scop
   const [remarks, setRemarks] = useState(transaction?.remarks || "");
   const [name, setName] = useState(transaction?.name || "");
   const [subCategory, setSubCategory] = useState("");
+  const [paymentMethod, setPaymentMethod] = useState<"upi" | "creditcard">("upi");
   const [loading, setLoading] = useState(false);
   const [budgetCategories, setBudgetCategories] = useState<string[]>([]);
   const [budgetRemaining, setBudgetRemaining] = useState<Record<string, number>>({});
@@ -123,6 +126,7 @@ const AddTransactionDialog = ({ open, onOpenChange, onSuccess, transaction, scop
         setSubCategory("");
         setName(transaction.name || "");
       }
+      setPaymentMethod((transaction.payment_method as "upi" | "creditcard") || "upi");
     } else if (!open) {
       // Reset form when dialog closes
       setType("income");
@@ -134,6 +138,7 @@ const AddTransactionDialog = ({ open, onOpenChange, onSuccess, transaction, scop
       setInterval("one-time");
       setRemarks("");
       setName("");
+      setPaymentMethod("upi");
     }
   }, [transaction, open]);
 
@@ -182,6 +187,7 @@ const AddTransactionDialog = ({ open, onOpenChange, onSuccess, transaction, scop
             interval,
             remarks: remarks || null,
             name: resolvedName,
+            payment_method: type === "expense" ? paymentMethod : null,
           })
           .eq("id", transaction.id);
 
@@ -199,6 +205,7 @@ const AddTransactionDialog = ({ open, onOpenChange, onSuccess, transaction, scop
           interval,
           remarks: remarks || null,
           name: resolvedName,
+          payment_method: type === "expense" ? paymentMethod : null,
         });
 
         if (error) throw error;
@@ -213,6 +220,7 @@ const AddTransactionDialog = ({ open, onOpenChange, onSuccess, transaction, scop
       setInterval("one-time");
       setRemarks("");
       setName("");
+      setPaymentMethod("upi");
 
       onSuccess();
     } catch (error: any) {
@@ -340,6 +348,38 @@ const AddTransactionDialog = ({ open, onOpenChange, onSuccess, transaction, scop
                     value={name}
                     onChange={(e) => setName(e.target.value)}
                   />
+                </div>
+              )}
+
+              {type === "expense" && (
+                <div className="space-y-2">
+                  <Label>Payment Method</Label>
+                  <div className="grid grid-cols-2 gap-2 bg-muted p-1 rounded-lg">
+                    <button
+                      type="button"
+                      onClick={() => setPaymentMethod("upi")}
+                      className={`flex items-center justify-center gap-2 py-1.5 px-3 text-sm font-medium rounded-md transition-all ${
+                        paymentMethod === "upi"
+                          ? "bg-background text-foreground shadow-sm"
+                          : "text-muted-foreground hover:text-foreground"
+                      }`}
+                    >
+                      <Smartphone className="h-4 w-4 text-primary" />
+                      UPI
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setPaymentMethod("creditcard")}
+                      className={`flex items-center justify-center gap-2 py-1.5 px-3 text-sm font-medium rounded-md transition-all ${
+                        paymentMethod === "creditcard"
+                          ? "bg-background text-foreground shadow-sm"
+                          : "text-muted-foreground hover:text-foreground"
+                      }`}
+                    >
+                      <CreditCard className="h-4 w-4 text-orange-500" />
+                      Credit Card
+                    </button>
+                  </div>
                 </div>
               )}
 

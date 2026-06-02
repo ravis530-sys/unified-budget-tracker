@@ -28,6 +28,7 @@ interface Transaction {
   profiles?: {
     full_name: string | null;
   } | null;
+  payment_method?: string | null;
 }
 
 interface TransactionListProps {
@@ -244,7 +245,19 @@ const TransactionList = ({ limit, onEdit, scope, selectedMonth, type, onDataLoad
               {getIcon(transaction.type)}
             </div>
             <div>
-              <p className="font-medium">{transaction.category}</p>
+              <div className="flex items-center gap-2">
+                <p className="font-medium">{transaction.category}</p>
+                {transaction.payment_method === "creditcard" && (
+                  <span className="inline-flex items-center px-1.5 py-0.5 rounded-md text-[10px] font-semibold bg-orange-100 text-orange-850 dark:bg-orange-950/40 dark:text-orange-400 border border-orange-200/50 dark:border-orange-900/30">
+                    Credit Card
+                  </span>
+                )}
+                {transaction.payment_method === "upi" && (
+                  <span className="inline-flex items-center px-1.5 py-0.5 rounded-md text-[10px] font-semibold bg-primary/10 text-primary border border-primary/20">
+                    UPI
+                  </span>
+                )}
+              </div>
               <p className="text-xs text-muted-foreground">
                 {format(new Date(transaction.transaction_date), "MMM d, yyyy")} • {transaction.interval}
                 {transaction.profiles?.full_name && (

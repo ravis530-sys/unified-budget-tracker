@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { TrendingUp, TrendingDown, Wallet, PiggyBank, DollarSign, TrendingUpDown, ChevronDown, ChevronUp, ArrowRight, ArrowLeft } from "lucide-react";
+import { TrendingUp, TrendingDown, Wallet, PiggyBank, DollarSign, TrendingUpDown, ChevronDown, ChevronUp, ArrowRight, ArrowLeft, CreditCard } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { format, startOfMonth, endOfMonth } from "date-fns";
 
@@ -9,6 +9,7 @@ interface Stats {
   accumulatedSavings: number;
   currentEarnings: number;
   totalExpenses: number;
+  creditCardExpenses: number;
   totalInvestments: number;
   netBalance: number;
   savingsRate: number;
@@ -27,6 +28,7 @@ const DashboardStats = ({ scope, selectedMonth = new Date() }: DashboardStatsPro
     accumulatedSavings: 0,
     currentEarnings: 0,
     totalExpenses: 0,
+    creditCardExpenses: 0,
     totalInvestments: 0,
     netBalance: 0,
     savingsRate: 0,
@@ -116,7 +118,7 @@ const DashboardStats = ({ scope, selectedMonth = new Date() }: DashboardStatsPro
       // Fetch expenses from selected month
       let currentExpensesQuery = supabase
         .from("transactions")
-        .select("amount, category")
+        .select("amount, category, payment_method")
         .eq("type", "expense")
         .gte("transaction_date", currentMonthStart)
         .lte("transaction_date", currentMonthEnd);
@@ -224,6 +226,11 @@ const DashboardStats = ({ scope, selectedMonth = new Date() }: DashboardStatsPro
       const totalCurrentEarningsActual = currentEarningsData?.reduce((sum, t) => sum + Number(t.amount), 0) || 0;
       const totalCurrentInvestments = currentInvestments?.reduce((sum, t) => sum + Number(t.amount), 0) || 0;
 
+      // Credit card expenses are NOT deducted from Net Balance because they are paid next month
+      const currentCreditCardExpenses = currentExpenses
+        ?.filter((t: any) => t.payment_method === "creditcard")
+        .reduce((sum, t) => sum + Number(t.amount), 0) || 0;
+
       // Calculate category-level Unallocated Earnings
       let totalCurrentEarningsUnalloc = 0;
       const incomeTxnMap: Record<string, number> = {};
@@ -274,9 +281,9 @@ const DashboardStats = ({ scope, selectedMonth = new Date() }: DashboardStatsPro
       // Saved For Next Month = remaining allocated source earnings + unutilized goal allocations
       const savedForNextMonth = remainingAllocatedSourceEarnings + unutilizedAllocated;
 
-      // Net Balance = Total Saved + Current Month Earnings - Current Month Expenses - Current Month Investments
-      // This gives the actual available balance for the current month
-      const netBalance = totalSaved + totalCurrentEarningsActual - totalCurrentExpensesActual - totalCurrentInvestments;
+      // Net Balance = Total Saved + Current Month Earnings - (Current Month Expenses - Credit Card Expenses) - Current Month Investments
+      // This gives the actual available balance for the current month, excluding Credit Card expenses as they are paid next month
+      const netBalance = totalSaved + totalCurrentEarningsActual - (totalCurrentExpensesActual - currentCreditCardExpenses) - totalCurrentInvestments;
 
       // Savings Rate = (Net Balance / (Total Saved + Current Earnings)) * 100 (percentage of total available funds remaining)
       const totalAvailable = totalSaved + totalCurrentEarningsActual;
@@ -286,6 +293,7 @@ const DashboardStats = ({ scope, selectedMonth = new Date() }: DashboardStatsPro
         accumulatedSavings: totalSaved,
         currentEarnings: totalCurrentEarningsUnalloc,
         totalExpenses: totalCurrentExpensesUnalloc,
+        creditCardExpenses: currentCreditCardExpenses,
         totalInvestments: totalCurrentInvestments,
         netBalance,
         savingsRate,
@@ -327,7 +335,7 @@ const DashboardStats = ({ scope, selectedMonth = new Date() }: DashboardStatsPro
 
   return (
     <div className="space-y-4">
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-6">
+      <div className="grid gap-4 grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-7">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
             <CardTitle className="text-sm font-medium text-muted-foreground">
@@ -370,6 +378,21 @@ const DashboardStats = ({ scope, selectedMonth = new Date() }: DashboardStatsPro
               {formatCurrency(stats.totalExpenses)}
             </div>
             <p className="text-xs text-muted-foreground mt-1">This month</p>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between pb-2">
+            <CardTitle className="text-sm font-medium text-muted-foreground">
+              Credit Card Spends
+            </CardTitle>
+            <CreditCard className="h-4 w-4 text-orange-500" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold text-orange-500">
+              {formatCurrency(stats.creditCardExpenses)}
+            </div>
+            <p className="text-xs text-muted-foreground mt-1">Paid next month</p>
           </CardContent>
         </Card>
 

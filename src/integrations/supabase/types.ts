@@ -251,6 +251,7 @@ export type Database = {
           type: string
           updated_at: string | null
           user_id: string
+          payment_method: string | null
         }
         Insert: {
           amount: number
@@ -265,6 +266,7 @@ export type Database = {
           type: string
           updated_at?: string | null
           user_id: string
+          payment_method?: string | null
         }
         Update: {
           amount?: number
@@ -279,6 +281,7 @@ export type Database = {
           type?: string
           updated_at?: string | null
           user_id?: string
+          payment_method?: string | null
         }
         Relationships: [
           {

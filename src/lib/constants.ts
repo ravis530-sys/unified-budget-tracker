@@ -36,6 +36,12 @@ export const INVESTMENT_CATEGORIES = [
     "Fixed Deposits (FD)",
     "Bonds",
     "Lend",
+    "NPS",
+    "EPF",
+    "PPF",
+    "Sukanya Samriddhi Yojana (SSY)",
+    "Post Office Schemes (POS)",
+    "Annuity Plans",
     "Other Investments",
 ];
 

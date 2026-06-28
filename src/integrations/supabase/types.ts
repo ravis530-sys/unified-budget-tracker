@@ -247,6 +247,7 @@ export type Database = {
           id: string
           interval: string
           remarks: string | null
+          tag: string | null
           transaction_date: string
           type: string
           updated_at: string | null
@@ -262,6 +263,7 @@ export type Database = {
           id?: string
           interval: string
           remarks?: string | null
+          tag?: string | null
           transaction_date?: string
           type: string
           updated_at?: string | null
@@ -277,6 +279,7 @@ export type Database = {
           id?: string
           interval?: string
           remarks?: string | null
+          tag?: string | null
           transaction_date?: string
           type?: string
           updated_at?: string | null

@@ -9,7 +9,8 @@ import { Textarea } from "@/components/ui/textarea";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { toast } from "sonner";
 import { format } from "date-fns";
-import { CreditCard, Smartphone } from "lucide-react";
+import { CreditCard, Smartphone, RotateCcw } from "lucide-react";
+import { Checkbox } from "@/components/ui/checkbox";
 
 import { INCOME_CATEGORIES, EXPENSE_CATEGORIES, INTERVALS, INVESTMENT_CATEGORIES, CATEGORY_SUB_ITEMS } from "@/lib/constants";
 
@@ -24,6 +25,15 @@ interface Transaction {
   remarks: string | null;
   name?: string | null;
   payment_method?: string | null;
+  tag?: string | null;
+}
+
+interface PaidBackExpense {
+  id: string;
+  category: string;
+  amount: number;
+  transaction_date: string;
+  remarks: string | null;
 }
 
 interface AddTransactionDialogProps {
@@ -48,6 +58,9 @@ const AddTransactionDialog = ({ open, onOpenChange, onSuccess, transaction, scop
   const [loading, setLoading] = useState(false);
   const [budgetCategories, setBudgetCategories] = useState<string[]>([]);
   const [budgetRemaining, setBudgetRemaining] = useState<Record<string, number>>({});
+  const [isPaidBack, setIsPaidBack] = useState(false);
+  const [paidBackAgainstId, setPaidBackAgainstId] = useState("");
+  const [paidBackExpenses, setPaidBackExpenses] = useState<PaidBackExpense[]>([]);
 
   // Fetch budget categories when type changes to expense
   useEffect(() => {
@@ -55,6 +68,84 @@ const AddTransactionDialog = ({ open, onOpenChange, onSuccess, transaction, scop
       fetchBudgetCategories();
     }
   }, [type, open, date]);
+
+  // Fetch unlinked paid-back expenses when income tab is active
+  useEffect(() => {
+    if (type === "income" && open) {
+      fetchPaidBackExpenses();
+    }
+  }, [type, open, scope]);
+
+  const fetchPaidBackExpenses = async () => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+
+      let householdId: string | null = null;
+      if (scope === "family") {
+        const { data: membership } = await supabase
+          .from("household_members")
+          .select("household_id")
+          .eq("user_id", user.id)
+          .single();
+        householdId = membership?.household_id || null;
+      }
+
+      // Fetch expenses tagged as "paid_back"
+      let expQuery = supabase
+        .from("transactions")
+        .select("id, category, amount, transaction_date, remarks")
+        .eq("type", "expense")
+        .eq("tag", "paid_back");
+
+      if (scope === "individual") {
+        expQuery = expQuery.eq("user_id", user.id).is("household_id", null);
+      } else {
+        expQuery = expQuery.eq("household_id", householdId);
+      }
+
+      const { data: taggedExpenses } = await expQuery;
+
+      if (!taggedExpenses || taggedExpenses.length === 0) {
+        setPaidBackExpenses([]);
+        return;
+      }
+
+      // Fetch income transactions that are already linked to paid-back expenses
+      let incQuery = supabase
+        .from("transactions")
+        .select("tag")
+        .eq("type", "income")
+        .like("tag", "paid_back:%");
+
+      if (scope === "individual") {
+        incQuery = incQuery.eq("user_id", user.id).is("household_id", null);
+      } else {
+        incQuery = incQuery.eq("household_id", householdId);
+      }
+
+      const { data: linkedIncomes } = await incQuery;
+
+      // Extract already-linked expense IDs
+      const linkedExpenseIds = new Set(
+        (linkedIncomes || []).map(inc => inc.tag?.replace("paid_back:", "")).filter(Boolean)
+      );
+
+      // Filter out already-linked expenses (but keep the one currently being edited)
+      const unlinked = taggedExpenses.filter(exp => {
+        if (linkedExpenseIds.has(exp.id)) {
+          // If we're editing and this income is linked to this expense, still show it
+          if (transaction && transaction.tag === `paid_back:${exp.id}`) return true;
+          return false;
+        }
+        return true;
+      });
+
+      setPaidBackExpenses(unlinked as PaidBackExpense[]);
+    } catch (error) {
+      console.error("Error fetching paid-back expenses:", error);
+    }
+  };
 
   const fetchBudgetCategories = async () => {
     try {
@@ -127,6 +218,17 @@ const AddTransactionDialog = ({ open, onOpenChange, onSuccess, transaction, scop
         setName(transaction.name || "");
       }
       setPaymentMethod((transaction.payment_method as "upi" | "creditcard") || "upi");
+      // Restore tag state
+      if (transaction.tag === "paid_back") {
+        setIsPaidBack(true);
+        setPaidBackAgainstId("");
+      } else if (transaction.tag?.startsWith("paid_back:")) {
+        setIsPaidBack(false);
+        setPaidBackAgainstId(transaction.tag.replace("paid_back:", ""));
+      } else {
+        setIsPaidBack(false);
+        setPaidBackAgainstId("");
+      }
     } else if (!open) {
       // Reset form when dialog closes
       setType("income");
@@ -139,6 +241,8 @@ const AddTransactionDialog = ({ open, onOpenChange, onSuccess, transaction, scop
       setRemarks("");
       setName("");
       setPaymentMethod("upi");
+      setIsPaidBack(false);
+      setPaidBackAgainstId("");
     }
   }, [transaction, open]);
 
@@ -175,6 +279,14 @@ const AddTransactionDialog = ({ open, onOpenChange, onSuccess, transaction, scop
       // Resolve the name field: use subCategory for categories with sub-items, else name
       const resolvedName = CATEGORY_SUB_ITEMS[category] ? subCategory || null : name || null;
 
+      // Resolve tag value
+      let resolvedTag: string | null = null;
+      if (type === "expense" && isPaidBack) {
+        resolvedTag = "paid_back";
+      } else if (type === "income" && paidBackAgainstId && paidBackAgainstId !== "none") {
+        resolvedTag = `paid_back:${paidBackAgainstId}`;
+      }
+
       if (transaction) {
         // Update existing transaction
         const { error } = await supabase
@@ -188,6 +300,7 @@ const AddTransactionDialog = ({ open, onOpenChange, onSuccess, transaction, scop
             remarks: remarks || null,
             name: resolvedName,
             payment_method: type === "expense" ? paymentMethod : null,
+            tag: resolvedTag,
           })
           .eq("id", transaction.id);
 
@@ -206,6 +319,7 @@ const AddTransactionDialog = ({ open, onOpenChange, onSuccess, transaction, scop
           remarks: remarks || null,
           name: resolvedName,
           payment_method: type === "expense" ? paymentMethod : null,
+          tag: resolvedTag,
         });
 
         if (error) throw error;
@@ -221,6 +335,8 @@ const AddTransactionDialog = ({ open, onOpenChange, onSuccess, transaction, scop
       setRemarks("");
       setName("");
       setPaymentMethod("upi");
+      setIsPaidBack(false);
+      setPaidBackAgainstId("");
 
       onSuccess();
     } catch (error: any) {
@@ -248,6 +364,8 @@ const AddTransactionDialog = ({ open, onOpenChange, onSuccess, transaction, scop
           else setType("investment");
           setCategory("");
           setSubCategory("");
+          setIsPaidBack(false);
+          setPaidBackAgainstId("");
         }}>
           <TabsList className="grid w-full grid-cols-3">
             <TabsTrigger value="income">Income</TabsTrigger>
@@ -348,6 +466,51 @@ const AddTransactionDialog = ({ open, onOpenChange, onSuccess, transaction, scop
                     value={name}
                     onChange={(e) => setName(e.target.value)}
                   />
+                </div>
+              )}
+
+              {/* Paid Back tag for expenses */}
+              {type === "expense" && (
+                <div className="flex items-center gap-2 p-3 rounded-lg border bg-muted/30">
+                  <Checkbox
+                    id="paid-back"
+                    checked={isPaidBack}
+                    onCheckedChange={(checked) => setIsPaidBack(checked === true)}
+                  />
+                  <Label htmlFor="paid-back" className="flex items-center gap-2 cursor-pointer text-sm font-medium">
+                    <RotateCcw className="h-3.5 w-3.5 text-blue-500" />
+                    Mark as Paid Back
+                  </Label>
+                  <span className="text-xs text-muted-foreground ml-auto">Will be reimbursed later</span>
+                </div>
+              )}
+
+              {/* Paid back against dropdown for income */}
+              {type === "income" && paidBackExpenses.length > 0 && (
+                <div className="space-y-2 p-3 rounded-lg border bg-muted/30">
+                  <Label className="flex items-center gap-2 text-sm font-medium">
+                    <RotateCcw className="h-3.5 w-3.5 text-blue-500" />
+                    Paid Back Against Expense (Optional)
+                  </Label>
+                  <Select value={paidBackAgainstId} onValueChange={setPaidBackAgainstId}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select expense to reimburse..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none">None</SelectItem>
+                      {paidBackExpenses.map((exp) => (
+                        <SelectItem key={exp.id} value={exp.id}>
+                          <div className="flex items-center gap-2">
+                            <span>{exp.category}</span>
+                            <span className="text-muted-foreground">•</span>
+                            <span className="text-muted-foreground">₹{Number(exp.amount).toLocaleString()}</span>
+                            <span className="text-muted-foreground">•</span>
+                            <span className="text-xs text-muted-foreground">{format(new Date(exp.transaction_date), "MMM d, yyyy")}</span>
+                          </div>
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </div>
               )}
 

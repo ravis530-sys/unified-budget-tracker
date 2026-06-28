@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { format, startOfMonth, endOfMonth } from "date-fns";
-import { TrendingUp, TrendingDown, Pencil, Trash2 } from "lucide-react";
+import { TrendingUp, TrendingDown, Pencil, Trash2, RotateCcw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import {
@@ -29,6 +29,7 @@ interface Transaction {
     full_name: string | null;
   } | null;
   payment_method?: string | null;
+  tag?: string | null;
 }
 
 interface TransactionListProps {
@@ -255,6 +256,18 @@ const TransactionList = ({ limit, onEdit, scope, selectedMonth, type, onDataLoad
                 {transaction.payment_method === "upi" && (
                   <span className="inline-flex items-center px-1.5 py-0.5 rounded-md text-[10px] font-semibold bg-primary/10 text-primary border border-primary/20">
                     UPI
+                  </span>
+                )}
+                {transaction.tag === "paid_back" && (
+                  <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[10px] font-semibold bg-blue-100 text-blue-700 dark:bg-blue-950/40 dark:text-blue-400 border border-blue-200/50 dark:border-blue-900/30">
+                    <RotateCcw className="h-2.5 w-2.5" />
+                    Paid Back
+                  </span>
+                )}
+                {transaction.tag?.startsWith("paid_back:") && (
+                  <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[10px] font-semibold bg-emerald-100 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-400 border border-emerald-200/50 dark:border-emerald-900/30">
+                    <RotateCcw className="h-2.5 w-2.5" />
+                    Reimbursement
                   </span>
                 )}
               </div>

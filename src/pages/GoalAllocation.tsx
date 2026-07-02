@@ -641,7 +641,21 @@ const GoalAllocation = () => {
                                     allocations.map(alloc => {
                                         const expCat = alloc.expense_budget?.category || "";
                                         const allocated = Number(alloc.allocated_amount);
-                                        const spent = spentAmounts[expCat] || 0;
+
+                                        // Calculate total allocated to this expense category across ALL allocations
+                                        const totalAllocatedToCategory = allocations.reduce((sum, a) => {
+                                            if ((a.expense_budget?.category || "") === expCat) {
+                                                return sum + Number(a.allocated_amount);
+                                            }
+                                            return sum;
+                                        }, 0);
+
+                                        // Prorate the spend proportionally to this allocation's share
+                                        const totalCategorySpent = spentAmounts[expCat] || 0;
+                                        const spent = totalAllocatedToCategory > 0
+                                            ? (allocated / totalAllocatedToCategory) * totalCategorySpent
+                                            : 0;
+
                                         const pct = allocated > 0 ? Math.min((spent / allocated) * 100, 100) : 0;
                                         const isOver = spent > allocated;
                                         const isNear = !isOver && pct >= 80;

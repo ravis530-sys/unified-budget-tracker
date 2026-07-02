@@ -226,10 +226,19 @@ const DashboardStats = ({ scope, selectedMonth = new Date() }: DashboardStatsPro
       const totalCurrentEarningsActual = currentEarningsData?.reduce((sum, t) => sum + Number(t.amount), 0) || 0;
       const totalCurrentInvestments = currentInvestments?.reduce((sum, t) => sum + Number(t.amount), 0) || 0;
 
-      // Credit card expenses are NOT deducted from Net Balance because they are paid next month
+      // Credit card expenses recorded with payment_method="creditcard" (deferred, paid later)
       const currentCreditCardExpenses = currentExpenses
         ?.filter((t: any) => t.payment_method === "creditcard")
         .reduce((sum, t) => sum + Number(t.amount), 0) || 0;
+
+      // Credit Card Bill payments made this month (category="Credit Card Bill", paid via UPI/bank)
+      // These represent actual settlement of prior CC spends
+      const currentCreditCardPayments = currentExpenses
+        ?.filter((t: any) => t.category === "Credit Card Bill" && t.payment_method !== "creditcard")
+        .reduce((sum, t) => sum + Number(t.amount), 0) || 0;
+
+      // Outstanding CC balance = total CC spends this month minus what's already been paid off
+      const outstandingCreditCard = Math.max(0, currentCreditCardExpenses - currentCreditCardPayments);
 
       // Calculate category-level Unallocated Earnings
       let totalCurrentEarningsUnalloc = 0;
@@ -242,15 +251,22 @@ const DashboardStats = ({ scope, selectedMonth = new Date() }: DashboardStatsPro
           totalCurrentEarningsUnalloc += Math.max(0, amt - allocated);
       });
 
-      // Calculate category-level Unallocated Expenses
+      // Calculate category-level Unallocated Expenses (Only non-CC expenses to prevent duplication with CC Outstanding)
       let totalCurrentExpensesUnalloc = 0;
       const expenseTxnMap: Record<string, number> = {};
+      const nonCcExpenseTxnMap: Record<string, number> = {};
+      
       currentExpenses?.forEach(txn => {
-          expenseTxnMap[txn.category] = (expenseTxnMap[txn.category] || 0) + Number(txn.amount);
+          const amt = Number(txn.amount);
+          expenseTxnMap[txn.category] = (expenseTxnMap[txn.category] || 0) + amt;
+          if (txn.payment_method !== "creditcard") {
+              nonCcExpenseTxnMap[txn.category] = (nonCcExpenseTxnMap[txn.category] || 0) + amt;
+          }
       });
-      Object.entries(expenseTxnMap).forEach(([cat, amt]) => {
+      
+      Object.entries(nonCcExpenseTxnMap).forEach(([cat, nonCcAmt]) => {
           const allocated = allocatedExpenseMap[cat] || 0;
-          totalCurrentExpensesUnalloc += Math.max(0, amt - allocated);
+          totalCurrentExpensesUnalloc += Math.max(0, nonCcAmt - allocated);
       });
 
       // Build investment transaction map (for investment allocations like MF, SIP etc.)
@@ -281,9 +297,11 @@ const DashboardStats = ({ scope, selectedMonth = new Date() }: DashboardStatsPro
       // Saved For Next Month = remaining allocated source earnings + unutilized goal allocations
       const savedForNextMonth = remainingAllocatedSourceEarnings + unutilizedAllocated;
 
-      // Net Balance = Total Saved + Current Month Earnings - (Current Month Expenses - Credit Card Expenses) - Current Month Investments
-      // This gives the actual available balance for the current month, excluding Credit Card expenses as they are paid next month
-      const netBalance = totalSaved + totalCurrentEarningsActual - (totalCurrentExpensesActual - currentCreditCardExpenses) - totalCurrentInvestments;
+      // Net Balance = Total Saved + Current Month Earnings
+      //   - (Current Month Expenses - outstanding CC amount)  <-- deferred CC spend not yet paid
+      //   - Current Month Investments
+      // Only the UNPAID portion of CC spend is deferred; paid CC bills are already in totalCurrentExpensesActual
+      const netBalance = totalSaved + totalCurrentEarningsActual - (totalCurrentExpensesActual - outstandingCreditCard) - totalCurrentInvestments;
 
       // Savings Rate = (Net Balance / (Total Saved + Current Earnings)) * 100 (percentage of total available funds remaining)
       const totalAvailable = totalSaved + totalCurrentEarningsActual;
@@ -293,7 +311,7 @@ const DashboardStats = ({ scope, selectedMonth = new Date() }: DashboardStatsPro
         accumulatedSavings: totalSaved,
         currentEarnings: totalCurrentEarningsUnalloc,
         totalExpenses: totalCurrentExpensesUnalloc,
-        creditCardExpenses: currentCreditCardExpenses,
+        creditCardExpenses: outstandingCreditCard,
         totalInvestments: totalCurrentInvestments,
         netBalance,
         savingsRate,
@@ -384,15 +402,17 @@ const DashboardStats = ({ scope, selectedMonth = new Date() }: DashboardStatsPro
         <Card>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
             <CardTitle className="text-sm font-medium text-muted-foreground">
-              Credit Card Spends
+              CC Outstanding
             </CardTitle>
             <CreditCard className="h-4 w-4 text-orange-500" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-orange-500">
+            <div className={`text-2xl font-bold ${stats.creditCardExpenses === 0 ? "text-green-600" : "text-orange-500"}`}>
               {formatCurrency(stats.creditCardExpenses)}
             </div>
-            <p className="text-xs text-muted-foreground mt-1">Paid next month</p>
+            <p className="text-xs text-muted-foreground mt-1">
+              {stats.creditCardExpenses === 0 ? "Fully cleared ✓" : "Unpaid balance"}
+            </p>
           </CardContent>
         </Card>
 

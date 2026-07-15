@@ -1,8 +1,7 @@
 import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { TrendingUp, TrendingDown, Wallet, PiggyBank, DollarSign, TrendingUpDown, ChevronDown, ChevronUp, ArrowRight, ArrowLeft, CreditCard } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { TrendingUp, TrendingDown, Wallet, PiggyBank, DollarSign, TrendingUpDown, ChevronDown, ChevronUp, ArrowRight, ArrowLeft } from "lucide-react";
 import { format, startOfMonth, endOfMonth } from "date-fns";
 
 interface Stats {
@@ -221,8 +220,10 @@ const DashboardStats = ({ scope, selectedMonth = new Date() }: DashboardStatsPro
       // Total Saved = Total Previous Earnings - Total Previous Expenses - Total Previous Investments
       const totalSaved = totalPreviousEarnings - totalPreviousExpenses - totalPreviousInvestments;
 
-      // Actual totals for Net Balance
-      const totalCurrentExpensesActual = currentExpenses?.reduce((sum, t) => sum + Number(t.amount), 0) || 0;
+      // Actual totals for Net Balance (excludes Credit Card Bill category to avoid double-counting)
+      const totalCurrentExpensesActual = currentExpenses
+        ?.filter((t: any) => t.category !== "Credit Card Bill")
+        .reduce((sum, t) => sum + Number(t.amount), 0) || 0;
       const totalCurrentEarningsActual = currentEarningsData?.reduce((sum, t) => sum + Number(t.amount), 0) || 0;
       const totalCurrentInvestments = currentInvestments?.reduce((sum, t) => sum + Number(t.amount), 0) || 0;
 
@@ -297,20 +298,60 @@ const DashboardStats = ({ scope, selectedMonth = new Date() }: DashboardStatsPro
       // Saved For Next Month = remaining allocated source earnings + unutilized goal allocations
       const savedForNextMonth = remainingAllocatedSourceEarnings + unutilizedAllocated;
 
-      // Net Balance = Total Saved + Current Month Earnings
-      //   - (Current Month Expenses - outstanding CC amount)  <-- deferred CC spend not yet paid
-      //   - Current Month Investments
-      // Only the UNPAID portion of CC spend is deferred; paid CC bills are already in totalCurrentExpensesActual
-      const netBalance = totalSaved + totalCurrentEarningsActual - (totalCurrentExpensesActual - outstandingCreditCard) - totalCurrentInvestments;
+      // Net Balance = Total Saved + Current Month Earnings - All Current Expenses (excl. CC Bill) - Investments
+      // totalCurrentExpensesActual already includes CC spends (real liability) but excludes the CC Bill payment
+      // category (which would double-count the CC obligation already captured by the CC spend entries).
+      const netBalance = totalSaved + totalCurrentEarningsActual - totalCurrentExpensesActual - totalCurrentInvestments;
 
       // Savings Rate = (Net Balance / (Total Saved + Current Earnings)) * 100 (percentage of total available funds remaining)
       const totalAvailable = totalSaved + totalCurrentEarningsActual;
       const savingsRate = totalAvailable > 0 ? (netBalance / totalAvailable) * 100 : 0;
 
+      const expensesByPaymentMethod: Record<string, number> = {};
+      currentExpenses?.forEach(txn => {
+          const method = txn.payment_method || 'unknown';
+          expensesByPaymentMethod[method] = (expensesByPaymentMethod[method] || 0) + Number(txn.amount);
+      });
+
+      console.log("=== Debug: Dashboard Stats ===", {
+        totalExpenses: {
+          finalValue: totalCurrentExpensesActual,
+          totalCurrentExpensesActual,
+          expensesByPaymentMethod,
+          expenseTxnMap,
+          nonCcExpenseTxnMap,
+          allocatedExpenseMap,
+        },
+        monthEarnings: {
+          finalValue: totalCurrentEarningsUnalloc,
+          totalCurrentEarningsActual,
+          incomeTxnMap,
+          allocatedIncomeMap,
+        },
+        ccOutstanding: {
+          finalValue: outstandingCreditCard,
+          currentCreditCardExpenses,
+          currentCreditCardPayments,
+        },
+        netBalance: {
+          finalValue: netBalance,
+          totalSaved,
+          totalCurrentEarningsActual,
+          totalCurrentExpensesActual,
+          outstandingCreditCard,
+          totalCurrentInvestments,
+          formula: "totalSaved + totalCurrentEarningsActual - totalCurrentExpensesActual - totalCurrentInvestments"
+        },
+        totalInvestments: {
+          finalValue: totalCurrentInvestments,
+          investmentTxnMap,
+        }
+      });
+
       setStats({
         accumulatedSavings: totalSaved,
         currentEarnings: totalCurrentEarningsUnalloc,
-        totalExpenses: totalCurrentExpensesUnalloc,
+        totalExpenses: totalCurrentExpensesActual,
         creditCardExpenses: outstandingCreditCard,
         totalInvestments: totalCurrentInvestments,
         netBalance,
@@ -353,7 +394,7 @@ const DashboardStats = ({ scope, selectedMonth = new Date() }: DashboardStatsPro
 
   return (
     <div className="space-y-4">
-      <div className="grid gap-4 grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-7">
+      <div className="grid gap-4 grid-cols-2 md:grid-cols-3 xl:grid-cols-6">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
             <CardTitle className="text-sm font-medium text-muted-foreground">
@@ -380,7 +421,7 @@ const DashboardStats = ({ scope, selectedMonth = new Date() }: DashboardStatsPro
             <div className="text-2xl font-bold text-green-600">
               {formatCurrency(stats.currentEarnings)}
             </div>
-            <p className="text-xs text-muted-foreground mt-1">This month</p>
+            <p className="text-xs text-muted-foreground mt-1">Unallocated this month</p>
           </CardContent>
         </Card>
 
@@ -396,23 +437,6 @@ const DashboardStats = ({ scope, selectedMonth = new Date() }: DashboardStatsPro
               {formatCurrency(stats.totalExpenses)}
             </div>
             <p className="text-xs text-muted-foreground mt-1">This month</p>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">
-              CC Outstanding
-            </CardTitle>
-            <CreditCard className="h-4 w-4 text-orange-500" />
-          </CardHeader>
-          <CardContent>
-            <div className={`text-2xl font-bold ${stats.creditCardExpenses === 0 ? "text-green-600" : "text-orange-500"}`}>
-              {formatCurrency(stats.creditCardExpenses)}
-            </div>
-            <p className="text-xs text-muted-foreground mt-1">
-              {stats.creditCardExpenses === 0 ? "Fully cleared ✓" : "Unpaid balance"}
-            </p>
           </CardContent>
         </Card>
 

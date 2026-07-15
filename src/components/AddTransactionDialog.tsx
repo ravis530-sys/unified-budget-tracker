@@ -9,7 +9,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { toast } from "sonner";
 import { format } from "date-fns";
-import { CreditCard, Smartphone, RotateCcw } from "lucide-react";
+import { CreditCard, Smartphone, RotateCcw, Coins } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
 
 import { INCOME_CATEGORIES, EXPENSE_CATEGORIES, INTERVALS, INVESTMENT_CATEGORIES, CATEGORY_SUB_ITEMS } from "@/lib/constants";
@@ -54,7 +54,7 @@ const AddTransactionDialog = ({ open, onOpenChange, onSuccess, transaction, scop
   const [remarks, setRemarks] = useState(transaction?.remarks || "");
   const [name, setName] = useState(transaction?.name || "");
   const [subCategory, setSubCategory] = useState("");
-  const [paymentMethod, setPaymentMethod] = useState<"upi" | "creditcard">("upi");
+  const [paymentMethod, setPaymentMethod] = useState<"upi" | "creditcard" | "cash">("upi");
   const [loading, setLoading] = useState(false);
   const [budgetCategories, setBudgetCategories] = useState<string[]>([]);
   const [budgetRemaining, setBudgetRemaining] = useState<Record<string, number>>({});
@@ -217,7 +217,7 @@ const AddTransactionDialog = ({ open, onOpenChange, onSuccess, transaction, scop
         setSubCategory("");
         setName(transaction.name || "");
       }
-      setPaymentMethod((transaction.payment_method as "upi" | "creditcard") || "upi");
+      setPaymentMethod((transaction.payment_method as "upi" | "creditcard" | "cash") || "upi");
       // Restore tag state
       if (transaction.tag === "paid_back") {
         setIsPaidBack(true);
@@ -517,7 +517,7 @@ const AddTransactionDialog = ({ open, onOpenChange, onSuccess, transaction, scop
               {type === "expense" && (
                 <div className="space-y-2">
                   <Label>Payment Method</Label>
-                  <div className="grid grid-cols-2 gap-2 bg-muted p-1 rounded-lg">
+                  <div className="grid grid-cols-3 gap-2 bg-muted p-1 rounded-lg">
                     <button
                       type="button"
                       onClick={() => setPaymentMethod("upi")}
@@ -541,6 +541,18 @@ const AddTransactionDialog = ({ open, onOpenChange, onSuccess, transaction, scop
                     >
                       <CreditCard className="h-4 w-4 text-orange-500" />
                       Credit Card
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setPaymentMethod("cash")}
+                      className={`flex items-center justify-center gap-2 py-1.5 px-3 text-sm font-medium rounded-md transition-all ${
+                        paymentMethod === "cash"
+                          ? "bg-background text-foreground shadow-sm"
+                          : "text-muted-foreground hover:text-foreground"
+                      }`}
+                    >
+                      <Coins className="h-4 w-4 text-green-600" />
+                      Cash
                     </button>
                   </div>
                 </div>

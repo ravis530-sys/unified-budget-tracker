@@ -63,6 +63,11 @@ interface ExpenseChartProps {
 
 const ExpenseChart = ({ scope, selectedMonth = new Date(), onDataLoaded }: ExpenseChartProps) => {
   const [data, setData] = useState<CategoryData[]>([]);
+  const [paymentBreakdown, setPaymentBreakdown] = useState<{
+    upi: number;
+    creditcard: number;
+    cash: number;
+  }>({ upi: 0, creditcard: 0, cash: 0 });
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -105,18 +110,32 @@ const ExpenseChart = ({ scope, selectedMonth = new Date(), onDataLoaded }: Expen
 
       if (rows.length === 0) {
         setLoading(false);
+        setPaymentBreakdown({ upi: 0, creditcard: 0, cash: 0 });
         if (onDataLoaded) onDataLoaded(false);
         return;
       }
 
       // Group by category and collect sub-items
       const categoryMap: Record<string, CategoryData> = {};
+      let upiTotal = 0;
+      let ccTotal = 0;
+      let cashTotal = 0;
 
       rows.forEach((expense) => {
         const catName = expense.category;
         const amount = Number(expense.amount);
         const subName = expense.name?.trim();
         const hasSubItems = !!CATEGORY_SUB_ITEMS[catName];
+        
+        // Sum by payment method
+        const method = expense.payment_method || "upi";
+        if (method === "creditcard") {
+          ccTotal += amount;
+        } else if (method === "cash") {
+          cashTotal += amount;
+        } else {
+          upiTotal += amount;
+        }
 
         if (!categoryMap[catName]) {
           categoryMap[catName] = {
@@ -147,6 +166,7 @@ const ExpenseChart = ({ scope, selectedMonth = new Date(), onDataLoaded }: Expen
       }));
 
       setData(chartData);
+      setPaymentBreakdown({ upi: upiTotal, creditcard: ccTotal, cash: cashTotal });
       if (onDataLoaded) onDataLoaded(chartData.length > 0);
     } catch (error) {
       console.error("Error fetching expense data:", error);
@@ -172,26 +192,47 @@ const ExpenseChart = ({ scope, selectedMonth = new Date(), onDataLoaded }: Expen
   }
 
   return (
-    <ResponsiveContainer width="100%" height={300}>
-      <PieChart>
-        <Pie
-          data={data}
-          cx="50%"
-          cy="50%"
-          labelLine={false}
-          label={(entry) => `${entry.percentage.toFixed(1)}%`}
-          outerRadius={80}
-          fill="#8884d8"
-          dataKey="value"
-        >
-          {data.map((entry, index) => (
-            <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-          ))}
-        </Pie>
-        <Tooltip content={<CustomTooltip />} />
-        <Legend />
-      </PieChart>
-    </ResponsiveContainer>
+    <div className="flex flex-col space-y-4">
+      <div className="h-[280px]">
+        <ResponsiveContainer width="100%" height="100%">
+          <PieChart>
+            <Pie
+              data={data}
+              cx="50%"
+              cy="50%"
+              labelLine={false}
+              label={(entry) => `${entry.percentage.toFixed(1)}%`}
+              outerRadius={80}
+              fill="#8884d8"
+              dataKey="value"
+            >
+              {data.map((entry, index) => (
+                <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+              ))}
+            </Pie>
+            <Tooltip content={<CustomTooltip />} />
+            <Legend />
+          </PieChart>
+        </ResponsiveContainer>
+      </div>
+      <div className="pt-4 border-t flex items-center justify-center gap-6 text-sm flex-wrap">
+        <div className="flex items-center gap-1.5">
+          <span className="w-2.5 h-2.5 rounded-full bg-primary" />
+          <span className="text-muted-foreground font-medium">UPI:</span>
+          <span className="font-semibold">{formatCurrency(paymentBreakdown.upi)}</span>
+        </div>
+        <div className="flex items-center gap-1.5">
+          <span className="w-2.5 h-2.5 rounded-full bg-orange-500" />
+          <span className="text-muted-foreground font-medium">Credit Card:</span>
+          <span className="font-semibold">{formatCurrency(paymentBreakdown.creditcard)}</span>
+        </div>
+        <div className="flex items-center gap-1.5">
+          <span className="w-2.5 h-2.5 rounded-full bg-emerald-650 text-emerald-600" style={{ backgroundColor: 'rgb(5, 150, 105)' }} />
+          <span className="text-muted-foreground font-medium">Cash:</span>
+          <span className="font-semibold">{formatCurrency(paymentBreakdown.cash)}</span>
+        </div>
+      </div>
+    </div>
   );
 };
 

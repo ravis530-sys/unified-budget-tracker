@@ -5,7 +5,7 @@ import { Session, User } from "@supabase/supabase-js";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { LogOut, Plus, Wallet as WalletIcon, CalendarDays, Users, Target } from "lucide-react";
+import { LogOut, Plus, Wallet as WalletIcon, CalendarDays, Users, Target, BarChart2 } from "lucide-react";
 import { toast } from "sonner";
 import AddTransactionDialog from "@/components/AddTransactionDialog";
 import TransactionList from "@/components/TransactionList";
@@ -136,6 +136,9 @@ const Dashboard = () => {
           </div>
 
           <div className="flex gap-1 md:gap-2">
+            <Button variant="ghost" size="icon" className="h-8 w-8 md:h-10 md:w-10 text-white hover:bg-white/10 hover:text-white" onClick={() => navigate("/reports")} title="Expense Reports">
+              <BarChart2 className="h-5 w-5" />
+            </Button>
             <Button variant="ghost" size="icon" className="h-8 w-8 md:h-10 md:w-10 text-white hover:bg-white/10 hover:text-white" onClick={() => navigate("/budget-planning")} title="Budget Planning">
               <CalendarDays className="h-5 w-5" />
             </Button>

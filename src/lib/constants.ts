@@ -61,3 +61,27 @@ export const INTERVALS = [
     { value: "half-yearly", label: "Half Yearly" },
     { value: "yearly", label: "Yearly" },
 ];
+
+// Controllability classification for expense categories
+// Used in Reports page for insight cards and category breakdown badges
+export type ControllabilityType = "discretionary" | "semi-fixed" | "fixed";
+
+export const CONTROLLABLE_CATEGORIES: Record<string, ControllabilityType> = {
+    "Groceries": "semi-fixed",
+    "Vegetables": "semi-fixed",
+    "Fruits": "semi-fixed",
+    "Fuel": "semi-fixed",
+    "School Fees": "fixed",
+    "Travel": "discretionary",
+    "Mobile Bill": "fixed",
+    "Boardband Bill": "fixed",
+    "Utilities": "fixed",
+    "Healthcare": "semi-fixed",
+    "Entertainment": "discretionary",
+    "Dinning": "discretionary",
+    "Coffee/Snacks": "discretionary",
+    "EMI/Loans": "fixed",
+    "Credit Card Bill": "fixed",
+    "Insurance": "fixed",
+    "Other": "discretionary",
+};

@@ -10,6 +10,7 @@ import BudgetPlanning from "./pages/BudgetPlanning";
 import HouseholdSettings from "./pages/HouseholdSettings";
 import AcceptInvite from "./pages/AcceptInvite";
 import GoalAllocation from "./pages/GoalAllocation";
+import Reports from "./pages/Reports";
 import NotFound from "./pages/NotFound";
 import { supabase } from "@/integrations/supabase/client";
 
@@ -46,6 +47,7 @@ const App = () => {
             <Route path="/household-settings" element={<HouseholdSettings />} />
             <Route path="/accept-invite/:token" element={<AcceptInvite />} />
             <Route path="/goal-allocation" element={<GoalAllocation />} />
+            <Route path="/reports" element={<Reports />} />
             {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
             <Route path="*" element={<NotFound />} />
           </Routes>

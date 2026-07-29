@@ -7,6 +7,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   LogOut, Wallet as WalletIcon, CalendarDays, Users, Target, BarChart2,
+  ChevronDown, ChevronRight, Receipt,
 } from "lucide-react";
 import { toast } from "sonner";
 import { format, startOfWeek, endOfWeek, startOfQuarter, endOfQuarter, startOfYear, endOfYear,
@@ -31,11 +32,13 @@ const formatCurrency = (v: number) =>
   new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR", maximumFractionDigits: 0 }).format(v);
 
 interface Transaction {
+  id: string;
   type: "income" | "expense" | "investment";
   amount: number;
   category: string;
   transaction_date: string;
   payment_method?: string | null;
+  remarks?: string | null;
 }
 
 // Build sub-period buckets for the trend chart
@@ -157,6 +160,7 @@ const Reports = () => {
   const [trendPoints, setTrendPoints] = useState<TrendPoint[]>([]);
   const [categoryRows, setCategoryRows] = useState<CategoryRow[]>([]);
   const [totalExpenses, setTotalExpenses] = useState(0);
+  const [currentTransactions, setCurrentTransactions] = useState<Transaction[]>([]);
 
   const navigate = useNavigate();
   const { household } = useHousehold();
@@ -198,7 +202,7 @@ const Reports = () => {
       const buildQuery = (start: Date, end: Date) => {
         let q = supabase
           .from("transactions")
-          .select("type, amount, category, transaction_date, payment_method")
+          .select("id, type, amount, category, transaction_date, payment_method, remarks")
           .gte("transaction_date", fmtDate(start))
           .lte("transaction_date", fmtDate(end));
 
@@ -223,6 +227,7 @@ const Reports = () => {
       const { rows, total } = buildCategoryRows(curr, prev);
       setCategoryRows(rows);
       setTotalExpenses(total);
+      setCurrentTransactions(curr);
     } catch (err) {
       console.error("Error fetching report data:", err);
       toast.error("Failed to load report data");
@@ -379,10 +384,10 @@ const Reports = () => {
         <Card>
           <CardHeader>
             <CardTitle className="text-base font-semibold">Top Expense Categories to Control</CardTitle>
-            <CardDescription>Discretionary expenses with the highest impact on your budget</CardDescription>
+            <CardDescription>Discretionary expenses with the highest impact on your budget · Click a category to see transactions</CardDescription>
           </CardHeader>
           <CardContent>
-            <TopControlTable rows={categoryRows} loading={loading} />
+            <TopControlTable rows={categoryRows} loading={loading} transactions={currentTransactions} />
           </CardContent>
         </Card>
       </main>
@@ -392,14 +397,28 @@ const Reports = () => {
 
 // ── Inline sub-component: Improvement-focused table ──────────────────────────
 import { CONTROLLABLE_CATEGORIES } from "@/lib/constants";
+import { format as fmtFns } from "date-fns";
 
 const TopControlTable = ({
   rows,
   loading,
+  transactions,
 }: {
   rows: CategoryRow[];
   loading: boolean;
+  transactions: Transaction[];
 }) => {
+  const [expandedCategories, setExpandedCategories] = useState<Set<string>>(new Set());
+
+  const toggleCategory = (category: string) => {
+    setExpandedCategories((prev) => {
+      const next = new Set(prev);
+      if (next.has(category)) next.delete(category);
+      else next.add(category);
+      return next;
+    });
+  };
+
   if (loading) {
     return (
       <div className="space-y-2">
@@ -422,13 +441,27 @@ const TopControlTable = ({
     );
   }
 
-  const formatCurrency = (v: number) =>
+  const fmt = (v: number) =>
     new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR", maximumFractionDigits: 0 }).format(v);
+
+  // Group individual transactions by category (expenses only, no Credit Card Bill)
+  const txnsByCategory: Record<string, Transaction[]> = {};
+  transactions
+    .filter((t) => t.type === "expense" && t.category !== "Credit Card Bill")
+    .forEach((t) => {
+      if (!txnsByCategory[t.category]) txnsByCategory[t.category] = [];
+      txnsByCategory[t.category].push(t);
+    });
+  // Sort each category's transactions by date descending
+  Object.values(txnsByCategory).forEach((arr) =>
+    arr.sort((a, b) => b.transaction_date.localeCompare(a.transaction_date))
+  );
 
   return (
     <div className="space-y-0 divide-y divide-border">
       {/* Header */}
-      <div className="grid grid-cols-[1fr_auto_auto_auto] gap-4 py-2 text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+      <div className="grid grid-cols-[auto_1fr_auto_auto_auto] gap-3 py-2 text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+        <span />
         <span>Category</span>
         <span className="text-right">Spent</span>
         <span className="text-right">vs Last Period</span>
@@ -436,36 +469,101 @@ const TopControlTable = ({
       </div>
       {discretionary.map((r) => {
         const delta = r.prevAmount ? r.amount - r.prevAmount : undefined;
-        const potentialSaving = r.amount * 0.2; // suggest trimming 20%
+        const potentialSaving = r.amount * 0.2;
+        const isExpanded = expandedCategories.has(r.category);
+        const catTxns = txnsByCategory[r.category] || [];
 
         return (
-          <div
-            key={r.category}
-            className="grid grid-cols-[1fr_auto_auto_auto] gap-4 py-3 items-center text-sm"
-          >
-            <div className="flex items-center gap-2">
-              <span
-                className="w-2 h-2 rounded-full bg-red-400"
-                aria-hidden="true"
-              />
-              <span className="font-medium">{r.category}</span>
-            </div>
-            <span className="text-right font-semibold text-destructive tabular-nums">
-              {formatCurrency(r.amount)}
-            </span>
-            <span className="text-right tabular-nums">
-              {delta !== undefined ? (
-                <span className={delta > 0 ? "text-red-600 font-medium" : "text-green-600 font-medium"}>
-                  {delta > 0 ? "+" : ""}
-                  {formatCurrency(delta)}
-                </span>
-              ) : (
-                <span className="text-muted-foreground">—</span>
-              )}
-            </span>
-            <span className="text-right text-muted-foreground tabular-nums text-xs">
-              Save ~{formatCurrency(potentialSaving)} by cutting 20%
-            </span>
+          <div key={r.category}>
+            {/* Category summary row — clickable */}
+            <button
+              type="button"
+              onClick={() => toggleCategory(r.category)}
+              className="w-full grid grid-cols-[auto_1fr_auto_auto_auto] gap-3 py-3 items-center text-sm text-left hover:bg-muted/50 rounded-md px-1 transition-colors duration-150 group"
+            >
+              {/* Chevron */}
+              <span className="text-muted-foreground group-hover:text-foreground transition-colors">
+                {isExpanded
+                  ? <ChevronDown className="h-4 w-4" />
+                  : <ChevronRight className="h-4 w-4" />}
+              </span>
+              {/* Category name */}
+              <div className="flex items-center gap-2">
+                <span className="w-2 h-2 rounded-full bg-red-400 shrink-0" aria-hidden="true" />
+                <span className="font-medium">{r.category}</span>
+                {catTxns.length > 0 && (
+                  <span className="text-xs text-muted-foreground">({catTxns.length} txn{catTxns.length !== 1 ? "s" : ""})</span>
+                )}
+              </div>
+              {/* Spent */}
+              <span className="text-right font-semibold text-destructive tabular-nums">
+                {fmt(r.amount)}
+              </span>
+              {/* vs last period */}
+              <span className="text-right tabular-nums">
+                {delta !== undefined ? (
+                  <span className={delta > 0 ? "text-red-600 font-medium" : "text-green-600 font-medium"}>
+                    {delta > 0 ? "+" : ""}{fmt(delta)}
+                  </span>
+                ) : (
+                  <span className="text-muted-foreground">—</span>
+                )}
+              </span>
+              {/* Potential saving */}
+              <span className="text-right text-muted-foreground tabular-nums text-xs">
+                Save ~{fmt(potentialSaving)} by cutting 20%
+              </span>
+            </button>
+
+            {/* Expanded transaction list */}
+            {isExpanded && (
+              <div className="mx-1 mb-2 rounded-lg border border-border bg-muted/30 overflow-hidden">
+                {catTxns.length === 0 ? (
+                  <p className="py-3 px-4 text-xs text-muted-foreground text-center">
+                    No individual transactions recorded for this category.
+                  </p>
+                ) : (
+                  <div className="divide-y divide-border/60">
+                    {/* Sub-header */}
+                    <div className="grid grid-cols-[1fr_2fr_auto] gap-3 px-4 py-2 text-[10px] font-semibold text-muted-foreground uppercase tracking-wider bg-muted/50">
+                      <span>Date</span>
+                      <span>Remarks</span>
+                      <span className="text-right">Amount</span>
+                    </div>
+                    {catTxns.map((t) => (
+                      <div
+                        key={t.id}
+                        className="grid grid-cols-[1fr_2fr_auto] gap-3 px-4 py-2.5 items-center text-xs hover:bg-muted/40 transition-colors"
+                      >
+                        <span className="text-muted-foreground tabular-nums">
+                          {fmtFns(new Date(t.transaction_date), "d MMM yyyy")}
+                        </span>
+                        <span className="truncate flex items-center gap-1.5">
+                          {t.remarks ? (
+                            <>
+                              <Receipt className="h-3 w-3 text-muted-foreground shrink-0" />
+                              <span className="truncate">{t.remarks}</span>
+                            </>
+                          ) : (
+                            <span className="text-muted-foreground italic">No remarks</span>
+                          )}
+                        </span>
+                        <span className="text-right font-semibold text-destructive tabular-nums">
+                          {fmt(Number(t.amount))}
+                        </span>
+                      </div>
+                    ))}
+                    {/* Category subtotal */}
+                    <div className="grid grid-cols-[1fr_2fr_auto] gap-3 px-4 py-2 bg-muted/60">
+                      <span className="text-xs font-semibold text-muted-foreground col-span-2">Total</span>
+                      <span className="text-right text-xs font-bold text-destructive tabular-nums">
+                        {fmt(r.amount)}
+                      </span>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         );
       })}

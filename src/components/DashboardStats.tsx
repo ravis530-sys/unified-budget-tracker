@@ -1,8 +1,22 @@
 import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { TrendingUp, TrendingDown, Wallet, PiggyBank, DollarSign, TrendingUpDown, ChevronDown, ChevronUp, ArrowRight, ArrowLeft } from "lucide-react";
-import { format, startOfMonth, endOfMonth } from "date-fns";
+import { TrendingUp, TrendingDown, Wallet, PiggyBank, DollarSign, TrendingUpDown, ChevronDown, ChevronUp, ArrowRight, ArrowLeft, Scale, CheckCircle2 } from "lucide-react";
+import { format, startOfMonth, endOfMonth, addMonths } from "date-fns";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { toast } from "sonner";
+import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { EXPENSE_CATEGORIES, INVESTMENT_CATEGORIES } from "@/lib/constants";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 
 interface Stats {
   accumulatedSavings: number;
@@ -37,6 +51,11 @@ const DashboardStats = ({ scope, selectedMonth = new Date() }: DashboardStatsPro
   });
   const [loading, setLoading] = useState(true);
   const [showAllocations, setShowAllocations] = useState(false);
+  const [householdId, setHouseholdId] = useState<string | null>(null);
+  const [showSquareOffDialog, setShowSquareOffDialog] = useState(false);
+  const [squareOffCategory, setSquareOffCategory] = useState<string>("Square Off / Retained Savings");
+  const [squareOffTxnType, setSquareOffTxnType] = useState<"expense" | "investment">("expense");
+  const [squareOffLoading, setSquareOffLoading] = useState(false);
 
   useEffect(() => {
     fetchStats();
@@ -83,6 +102,7 @@ const DashboardStats = ({ scope, selectedMonth = new Date() }: DashboardStatsPro
           .single();
         householdId = membership?.household_id || null;
       }
+      setHouseholdId(householdId);
 
       // Fetch ALL earnings from previous months (strictly before selected month)
       let earningsQuery = supabase
@@ -99,10 +119,10 @@ const DashboardStats = ({ scope, selectedMonth = new Date() }: DashboardStatsPro
 
       const { data: earnings } = await earningsQuery;
 
-      // Fetch ALL expenses from previous months (strictly before selected month)
+      // Fetch ALL expenses from previous months (strictly before selected month, excluding Credit Card Bill to prevent double counting)
       let previousExpensesQuery = supabase
         .from("transactions")
-        .select("amount")
+        .select("amount, category")
         .eq("type", "expense")
         .lt("transaction_date", currentMonthStart);
 
@@ -214,10 +234,12 @@ const DashboardStats = ({ scope, selectedMonth = new Date() }: DashboardStatsPro
 
 
       const totalPreviousEarnings = earnings?.reduce((sum, t) => sum + Number(t.amount), 0) || 0;
-      const totalPreviousExpenses = previousExpenses?.reduce((sum, t) => sum + Number(t.amount), 0) || 0;
+      const totalPreviousExpenses = previousExpenses
+        ?.filter((t: any) => t.category !== "Credit Card Bill")
+        .reduce((sum, t) => sum + Number(t.amount), 0) || 0;
       const totalPreviousInvestments = previousInvestments?.reduce((sum, t) => sum + Number(t.amount), 0) || 0;
 
-      // Total Saved = Total Previous Earnings - Total Previous Expenses - Total Previous Investments
+      // Total Saved = Total Previous Earnings - Total Previous Expenses (excl. CC Bill) - Total Previous Investments
       const totalSaved = totalPreviousEarnings - totalPreviousExpenses - totalPreviousInvestments;
 
       // Actual totals for Net Balance (excludes Credit Card Bill category to avoid double-counting)
@@ -375,6 +397,69 @@ const DashboardStats = ({ scope, selectedMonth = new Date() }: DashboardStatsPro
     }).format(amount);
   };
 
+  const handleSquareOff = async () => {
+    try {
+      setSquareOffLoading(true);
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
+        toast.error("User not authenticated");
+        return;
+      }
+
+      const lastDayOfMonth = format(endOfMonth(selectedMonth), "yyyy-MM-dd");
+      const monthLabel = format(selectedMonth, "MMMM yyyy");
+
+      if (stats.netBalance > 0) {
+        // Record closing transaction for remaining positive balance
+        const { error } = await supabase
+          .from("transactions")
+          .insert({
+            user_id: user.id,
+            household_id: scope === "family" ? householdId : null,
+            amount: stats.netBalance,
+            type: squareOffTxnType,
+            category: squareOffCategory,
+            transaction_date: lastDayOfMonth,
+            remarks: `Square Off remaining balance for ${monthLabel}`,
+            payment_method: "cash",
+            interval: "one-time",
+            tag: "Square Off",
+            currency: "INR"
+          });
+
+        if (error) throw error;
+      } else if (stats.netBalance < 0) {
+        // Record balancing income adjustment for deficit
+        const { error } = await supabase
+          .from("transactions")
+          .insert({
+            user_id: user.id,
+            household_id: scope === "family" ? householdId : null,
+            amount: Math.abs(stats.netBalance),
+            type: "income",
+            category: "Square Off Deficit Adjustment",
+            transaction_date: lastDayOfMonth,
+            remarks: `Square Off deficit adjustment for ${monthLabel}`,
+            payment_method: "cash",
+            interval: "one-time",
+            tag: "Square Off",
+            currency: "INR"
+          });
+
+        if (error) throw error;
+      }
+
+      toast.success(`Successfully squared off Net Balance for ${monthLabel}!`);
+      setShowSquareOffDialog(false);
+      fetchStats();
+    } catch (error: any) {
+      console.error("Error squaring off Net Balance:", error);
+      toast.error("Failed to square off: " + (error.message || "Unknown error"));
+    } finally {
+      setSquareOffLoading(false);
+    }
+  };
+
   if (loading) {
     return (
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-6">
@@ -455,18 +540,36 @@ const DashboardStats = ({ scope, selectedMonth = new Date() }: DashboardStatsPro
           </CardContent>
         </Card>
 
-        <Card>
+        <Card className="relative overflow-hidden flex flex-col justify-between">
           <CardHeader className="flex flex-row items-center justify-between pb-2">
             <CardTitle className="text-sm font-medium text-muted-foreground">
               Net Balance
             </CardTitle>
             <DollarSign className="h-4 w-4 text-blue-600" />
           </CardHeader>
-          <CardContent>
+          <CardContent className="space-y-2">
             <div className={`text-2xl font-bold ${stats.netBalance >= 0 ? "text-success" : "text-destructive"}`}>
               {formatCurrency(stats.netBalance)}
             </div>
-            <p className="text-xs text-muted-foreground mt-1">Actual available cash</p>
+            <div className="flex items-center justify-between gap-1 pt-1 border-t border-border/40">
+              <p className="text-xs text-muted-foreground">Actual cash</p>
+              {stats.netBalance !== 0 ? (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="h-6 px-2 text-[11px] font-medium gap-1 border-primary/40 text-primary hover:bg-primary hover:text-primary-foreground transition-all shadow-xs"
+                  onClick={() => setShowSquareOffDialog(true)}
+                  title="Square off remaining balance so it does not carry forward to next month"
+                >
+                  <Scale className="h-3 w-3" />
+                  Square Off
+                </Button>
+              ) : (
+                <Badge variant="outline" className="text-[10px] py-0 h-5 bg-muted/60 text-muted-foreground flex items-center gap-1 border-border">
+                  <CheckCircle2 className="h-2.5 w-2.5 text-green-500" /> Squared Off
+                </Badge>
+              )}
+            </div>
           </CardContent>
         </Card>
 
@@ -537,6 +640,98 @@ const DashboardStats = ({ scope, selectedMonth = new Date() }: DashboardStatsPro
           </CardContent>
         )}
       </Card>
+
+      {/* Square Off Net Balance Dialog */}
+      <Dialog open={showSquareOffDialog} onOpenChange={setShowSquareOffDialog}>
+        <DialogContent className="sm:max-w-[480px]">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-lg">
+              <Scale className="h-5 w-5 text-primary" />
+              Square Off Remaining Balance
+            </DialogTitle>
+            <DialogDescription>
+              Settle remaining Net Balance for {format(selectedMonth, "MMMM yyyy")} so that it does not carry forward into {format(addMonths(selectedMonth, 1), "MMMM yyyy")}.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4 py-3">
+            <div className={`p-4 rounded-lg border flex items-center justify-between ${
+              stats.netBalance >= 0 ? "bg-emerald-500/5 border-emerald-500/20" : "bg-rose-500/5 border-rose-500/20"
+            }`}>
+              <div>
+                <p className="text-xs text-muted-foreground font-medium">Net Balance to Square Off</p>
+                <p className={`text-2xl font-bold ${
+                  stats.netBalance >= 0 ? "text-emerald-600 dark:text-emerald-400" : "text-rose-600 dark:text-rose-400"
+                }`}>
+                  {stats.netBalance > 0 ? "+" : ""}{formatCurrency(stats.netBalance)}
+                </p>
+              </div>
+              <Badge variant="outline" className={stats.netBalance >= 0 ? "border-emerald-500/30 text-emerald-600" : "border-rose-500/30 text-rose-600"}>
+                {stats.netBalance >= 0 ? "Positive Surplus" : "Negative Deficit"}
+              </Badge>
+            </div>
+
+            {stats.netBalance > 0 ? (
+              <div className="space-y-3">
+                <p className="text-xs text-muted-foreground leading-relaxed">
+                  Recording a square-off transaction on <strong>{format(endOfMonth(selectedMonth), "MMM dd, yyyy")}</strong> will bring {format(selectedMonth, "MMMM yyyy")}&apos;s ending balance to <strong>₹0</strong>, preventing it from carrying forward as saved funds into {format(addMonths(selectedMonth, 1), "MMMM yyyy")}.
+                </p>
+
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-semibold">Destination Category</Label>
+                  <Select value={squareOffCategory} onValueChange={(val) => {
+                    setSquareOffCategory(val);
+                    if (INVESTMENT_CATEGORIES.includes(val)) {
+                      setSquareOffTxnType("investment");
+                    } else {
+                      setSquareOffTxnType("expense");
+                    }
+                  }}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select category" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="Square Off / Retained Savings">
+                        🎯 Square Off / Retained Savings (Recommended)
+                      </SelectItem>
+                      <SelectItem value="Savings">Savings</SelectItem>
+                      <SelectItem value="Emergency Fund">Emergency Fund</SelectItem>
+                      <SelectItem value="Miscellaneous">Miscellaneous</SelectItem>
+                      {EXPENSE_CATEGORIES.filter(c => !["Savings", "Emergency Fund", "Miscellaneous"].includes(c)).map(c => (
+                        <SelectItem key={c} value={c}>{c}</SelectItem>
+                      ))}
+                      {INVESTMENT_CATEGORIES.map(c => (
+                        <SelectItem key={c} value={c}>{c} (Investment)</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <p className="text-[11px] text-muted-foreground">
+                    A transaction with tag &quot;Square Off&quot; will be created in this category.
+                  </p>
+                </div>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                <p className="text-xs text-muted-foreground leading-relaxed">
+                  Recording a balancing income adjustment on <strong>{format(endOfMonth(selectedMonth), "MMM dd, yyyy")}</strong> will neutralize this deficit of <strong>{formatCurrency(Math.abs(stats.netBalance))}</strong>, ensuring {format(addMonths(selectedMonth, 1), "MMMM yyyy")} starts fresh at ₹0 instead of in negative territory.
+                </p>
+                <div className="p-3 bg-muted/40 rounded border text-xs text-muted-foreground">
+                  An adjustment transaction tagged &quot;Square Off&quot; under category <strong>Square Off Deficit Adjustment</strong> will be added.
+                </div>
+              </div>
+            )}
+          </div>
+
+          <DialogFooter className="gap-2 sm:gap-0">
+            <Button variant="outline" onClick={() => setShowSquareOffDialog(false)} disabled={squareOffLoading}>
+              Cancel
+            </Button>
+            <Button onClick={handleSquareOff} disabled={squareOffLoading} className="gap-2">
+              {squareOffLoading ? "Squaring Off..." : "Confirm & Square Off"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };

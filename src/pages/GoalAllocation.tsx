@@ -175,34 +175,22 @@ const GoalAllocation = () => {
             }
 
 
-            // 1. Fetch ALL historic INCOME transactions
+            // 1. Fetch CURRENT month INCOME transactions
             // Scope applies here too
             let txnQuery = supabase
                 .from("transactions")
                 .select("amount, category")
                 .eq("type", "income")
+                .gte("transaction_date", startDateStr)
                 .lte("transaction_date", endDateStr);
 
             txnQuery = applyScopeFilter(txnQuery);
 
-            const { data: allTransactions, error: txnError } = await txnQuery;
+            const { data: currentTransactions, error: txnError } = await txnQuery;
 
             if (txnError) throw txnError;
 
-            // 2. Fetch ALL historic Allocations
-            // We need to fetch ALL to subtract, but only relevant to this scope
-            const { data: allAllocations, error: allAllocError } = await supabase
-                .from("budget_allocations")
-                .select(`
-                    allocated_amount,
-                    month_year,
-                    income_budget:monthly_budgets!fk_income_budget(category, household_id)
-                `);
-            // Again, filtering client side for correct calculations
-
-            if (allAllocError) throw allAllocError;
-
-            // 3. Fetch ALL historic Income Budgets (needed for ID lookup only)
+            // 2. Fetch ALL historic Income Budgets (needed for category ID lookup if existing)
             let incomeBudgetsQuery = supabase
                 .from("monthly_budgets")
                 .select("*")
@@ -215,7 +203,7 @@ const GoalAllocation = () => {
 
             if (allIncomeError) throw allIncomeError;
 
-            // 4. Calculate Stats per Category & Build Budget List from TRANSACTIONS
+            // 3. Calculate Stats per Category
             const incomeMap: Record<string, number> = {};
             const categoryToBudgetId: Record<string, string> = {}; // Map category -> latest budget_id
             const categoryToBudgetObj: Record<string, MonthlyBudget> = {}; // Map category -> budget object
@@ -228,85 +216,80 @@ const GoalAllocation = () => {
                 }
             });
 
-            // Sum up actual income
+            // Sum up actual income for current month
             const presentCategories = new Set<string>();
-            allTransactions?.forEach(txn => {
-                incomeMap[txn.category] = (incomeMap[txn.category] || 0) + txn.amount;
+            currentTransactions?.forEach(txn => {
+                incomeMap[txn.category] = (incomeMap[txn.category] || 0) + Number(txn.amount);
                 presentCategories.add(txn.category);
             });
 
-            // Sum up allocated amounts (Filter by scope first)
+            // Sum up current month allocated amounts
             const allocatedMap: Record<string, number> = {};
-            allAllocations?.forEach((alloc: any) => {
-                // Check date (Cumulative up to selected month)
-                // monthStr is "yyyy-MM-01", effectively the start of the month.
-                // If allocation is for a FUTURE month, ignore it.
-                if (alloc.month_year > monthStr) return;
-
-                // Check if this allocation belongs to current scope
-                const isFamilyScope = scope === "family" && household;
-                const matchesScope = isFamilyScope
-                    ? alloc.income_budget?.household_id === household.id
-                    : !alloc.income_budget?.household_id;
-
-                if (matchesScope) {
-                    const category = alloc.income_budget?.category;
-                    if (category) {
-                        allocatedMap[category] = (allocatedMap[category] || 0) + alloc.allocated_amount;
-                    }
+            filteredAllocations?.forEach((alloc: any) => {
+                const category = alloc.income_budget?.category;
+                if (category) {
+                    allocatedMap[category] = (allocatedMap[category] || 0) + Number(alloc.allocated_amount);
                 }
             });
 
-            // 5. Construct the list of "Income Sources" for the dropdown
-            const currentIncomeBudgets = currentBudgets?.filter(b => b.type === "income") || [];
+            // 4. Construct the list of "Income Sources" for the dropdown
+            // Exclude any income budget that is marked 'done' (completely utilized)
+            const currentIncomeBudgets = (currentBudgets?.filter(b => b.type === "income" && b.interval !== 'done') || []) as MonthlyBudget[];
             const derivedIncomeBudgets: MonthlyBudget[] = [];
             const available: Record<string, number> = {};
 
             const categoriesToProcess = new Set<string>();
             
-            // Add planned income categories for the selected month ONLY
+            // Add planned income categories for the selected month (non-done)
             currentIncomeBudgets.forEach(b => categoriesToProcess.add(b.category));
+            // Also include any categories that actually received income this month
+            presentCategories.forEach(cat => categoriesToProcess.add(cat));
 
             categoriesToProcess.forEach(category => {
-                let budgetId = categoryToBudgetId[category];
-                let budgetObj = categoryToBudgetObj[category];
-
-                // If no historic budget exists for this earning category
-                if (!budgetId) {
-                    // Try to find if it's in the current month's planned goals
-                    const currentObj = currentIncomeBudgets.find(b => b.category === category);
-                    if (currentObj) {
-                        budgetId = currentObj.id;
-                        budgetObj = currentObj as MonthlyBudget;
-                        // update maps for future references
-                        categoryToBudgetId[category] = budgetId;
-                        categoryToBudgetObj[category] = budgetObj;
-                    } else {
-                        // Otherwise create a virtual one for unbudgeted available income
-                        budgetId = `virtual-${category}`;
-                        budgetObj = {
-                            id: budgetId,
-                            category: category,
-                            planned_amount: 0,
-                            type: "income",
-                            interval: "Irregular",
-                            household_id: scope === "family" && household ? household.id : null
-                        } as MonthlyBudget;
-                    }
+                const currentObj = currentIncomeBudgets.find(b => b.category === category);
+                
+                // If the current budget exists and is done, skip it
+                if (currentObj && currentObj.interval === 'done') {
+                    return;
                 }
 
-                derivedIncomeBudgets.push(budgetObj);
+                let budgetId = currentObj?.id || categoryToBudgetId[category];
+                let budgetObj = (currentObj || categoryToBudgetObj[category]) as MonthlyBudget;
 
-                const totalIncome = incomeMap[category] || 0;
+                // If no budget exists for this earning category, create virtual one
+                if (!budgetId || !budgetObj) {
+                    budgetId = `virtual-${category}`;
+                    budgetObj = {
+                        id: budgetId,
+                        category: category,
+                        planned_amount: 0,
+                        type: "income",
+                        interval: "pending",
+                        household_id: scope === "family" && household ? household.id : null
+                    } as MonthlyBudget;
+                }
+
+                // If historic/current budget is marked 'done', skip it
+                if (budgetObj.interval === 'done') {
+                    return;
+                }
+
+                const actualIncome = incomeMap[category] || 0;
+                const plannedIncome = Number(budgetObj.planned_amount) || 0;
+                const totalCategoryIncome = Math.max(actualIncome, plannedIncome);
                 const totalAllocated = allocatedMap[category] || 0;
                 
-                // Amount available = actual income - allocated 
-                let categoryAvailable = totalIncome - totalAllocated;
+                // Amount available = total category income - allocated this month
+                const categoryAvailable = totalCategoryIncome - totalAllocated;
                 
-                // Fallback to planned amount for allocation if actual is less than planned?
-                // The user request suggests calculating "available as per earning category specific data"
-                // So we stick to actual available based on data.
+                // Only show categories that have available funds (> 0)
+                // If it's completely allocated or has no funds, exclude it
+                if (categoryAvailable <= 0) {
+                    return;
+                }
+
                 available[budgetId] = categoryAvailable;
+                derivedIncomeBudgets.push(budgetObj);
             });
 
             setIncomeBudgets(derivedIncomeBudgets);
@@ -508,11 +491,26 @@ const GoalAllocation = () => {
         if (!confirm("Delete this allocation?")) return;
         setLoading(true);
         try {
+            const { data: allocToDelete } = await supabase
+                .from("budget_allocations")
+                .select("income_budget_id, expense_budget_id")
+                .eq("id", allocId)
+                .single();
+
             const { error } = await supabase
                 .from("budget_allocations")
                 .delete()
                 .eq("id", allocId);
             if (error) throw error;
+
+            // If income or expense budget was marked 'done', revert to 'pending'
+            if (allocToDelete?.income_budget_id) {
+                await supabase.from("monthly_budgets").update({ interval: 'pending' }).eq("id", allocToDelete.income_budget_id).eq("interval", "done");
+            }
+            if (allocToDelete?.expense_budget_id) {
+                await supabase.from("monthly_budgets").update({ interval: 'pending' }).eq("id", allocToDelete.expense_budget_id).eq("interval", "done");
+            }
+
             toast.success("Allocation deleted");
             fetchData();
         } catch (error) {
@@ -574,11 +572,11 @@ const GoalAllocation = () => {
                                     </SelectTrigger>
                                     <SelectContent>
                                         {incomeBudgets.length === 0 ? (
-                                            <div className="p-2 text-sm text-muted-foreground text-center">No income found for this scope</div>
+                                            <div className="p-2 text-sm text-muted-foreground text-center">No available income funds found for this month</div>
                                         ) : (
                                             incomeBudgets.map(b => (
                                                 <SelectItem key={b.id} value={b.id}>
-                                                    {b.category} ({b.interval}) - Available: {availableAmounts[b.id] || 0}
+                                                    {b.category} - Available: ₹{Number(availableAmounts[b.id] || 0).toLocaleString()}
                                                 </SelectItem>
                                             ))
                                         )}
@@ -598,7 +596,7 @@ const GoalAllocation = () => {
                                         ) : (
                                             expenseBudgets.map(b => (
                                                 <SelectItem key={b.id} value={b.id}>
-                                                    {b.category} ({b.interval}) - Target: {b.planned_amount}
+                                                    {b.category} ({b.interval}) - Target: ₹{Number(b.planned_amount || 0).toLocaleString()}
                                                 </SelectItem>
                                             ))
                                         )}

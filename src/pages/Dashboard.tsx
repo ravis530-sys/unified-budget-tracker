@@ -18,6 +18,7 @@ import HouseholdSetupDialog from "@/components/HouseholdSetupDialog";
 import { useHousehold } from "@/hooks/useHousehold";
 import HouseholdSwitcher from "@/components/HouseholdSwitcher";
 import DashboardSection from "@/components/DashboardSection";
+import GoalFundingProgress from "@/components/GoalFundingProgress";
 
 const Dashboard = () => {
   const [session, setSession] = useState<Session | null>(null);
@@ -31,6 +32,7 @@ const Dashboard = () => {
 
   // Section empty states (default to false so they start visible and load data)
   const [isBudgetEmpty, setIsBudgetEmpty] = useState(false);
+  const [isGoalFundingEmpty, setIsGoalFundingEmpty] = useState(false);
   const [isExpenseChartEmpty, setIsExpenseChartEmpty] = useState(false);
   const [isInvestmentChartEmpty, setIsInvestmentChartEmpty] = useState(false);
   const [isIncomeListEmpty, setIsIncomeListEmpty] = useState(false);
@@ -209,6 +211,21 @@ const Dashboard = () => {
                   scope={scope}
                   selectedMonth={selectedMonth}
                   onDataLoaded={(hasData) => setIsExpenseChartEmpty(!hasData)}
+                />
+              </DashboardSection>
+            </div>
+
+            <div className="grid gap-6 md:grid-cols-1">
+              <DashboardSection
+                title="🎯 Goal Funding Progress"
+                description={`Expense goals active in ${selectedMonth.toLocaleString('default', { month: 'long', year: 'numeric' })} and their funding status`}
+                isEmpty={isGoalFundingEmpty}
+              >
+                <GoalFundingProgress
+                  key={`goals-${refreshKey}-${scope}-${selectedMonth.toISOString()}`}
+                  scope={scope}
+                  selectedMonth={selectedMonth}
+                  onDataLoaded={(hasData) => setIsGoalFundingEmpty(!hasData)}
                 />
               </DashboardSection>
             </div>

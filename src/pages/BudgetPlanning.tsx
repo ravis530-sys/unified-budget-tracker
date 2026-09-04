@@ -56,7 +56,7 @@ const BudgetPlanning = () => {
           </Button>
           <div>
             <h1 className="text-xl font-bold">Goal Planning</h1>
-            <p className="text-xs text-white/70">Manage your income and expense goals</p>
+            <p className="text-xs text-white/70">Manage your expense goals</p>
           </div>
         </div>
       </header>
@@ -80,43 +80,23 @@ const BudgetPlanning = () => {
           </TabsList>
 
           <TabsContent value={scope} className="space-y-6 mt-6">
-            <div className="grid gap-6 md:grid-cols-2">
-              <Card>
-                <CardHeader>
-                  <CardTitle>Income Goals</CardTitle>
-                  <CardDescription>
-                    Planned income sources
-                  </CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <BudgetCategoryList
-                    key={`income-${refreshKey}-${scope}`}
-                    type="income"
-                    viewMode="goals"
-                    onUpdate={() => setRefreshKey(prev => prev + 1)}
-                    scope={scope}
-                  />
-                </CardContent>
-              </Card>
-
-              <Card>
-                <CardHeader>
-                  <CardTitle>Expense Goals</CardTitle>
-                  <CardDescription>
-                    Planned expense limits
-                  </CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <BudgetCategoryList
-                    key={`expense-${refreshKey}-${scope}`}
-                    type="expense"
-                    viewMode="goals"
-                    onUpdate={() => setRefreshKey(prev => prev + 1)}
-                    scope={scope}
-                  />
-                </CardContent>
-              </Card>
-            </div>
+            <Card>
+              <CardHeader>
+                <CardTitle>Expense Goals</CardTitle>
+                <CardDescription>
+                  Planned expense limits
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <BudgetCategoryList
+                  key={`expense-${refreshKey}-${scope}`}
+                  type="expense"
+                  viewMode="goals"
+                  onUpdate={() => setRefreshKey(prev => prev + 1)}
+                  scope={scope}
+                />
+              </CardContent>
+            </Card>
           </TabsContent>
         </Tabs>
       </main>

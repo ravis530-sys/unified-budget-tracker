@@ -18,12 +18,13 @@ interface AddBudgetDialogProps {
   onSuccess: () => void;
   scope: "individual" | "family";
   selectedMonth?: Date; // Optional now, or removed if unused
+  allowIncome?: boolean;
 }
 
 import { INCOME_CATEGORIES, EXPENSE_CATEGORIES } from "@/lib/constants";
 
 
-const AddBudgetDialog = ({ open, onOpenChange, onSuccess, selectedMonth, scope }: AddBudgetDialogProps) => {
+const AddBudgetDialog = ({ open, onOpenChange, onSuccess, selectedMonth, scope, allowIncome = false }: AddBudgetDialogProps) => {
   const [type, setType] = useState<"income" | "expense">("expense");
   const [category, setCategory] = useState("");
   const [amount, setAmount] = useState("");
@@ -94,18 +95,20 @@ const AddBudgetDialog = ({ open, onOpenChange, onSuccess, selectedMonth, scope }
           <DialogTitle>Add Budget</DialogTitle>
         </DialogHeader>
         <form onSubmit={handleSubmit} className="space-y-4">
-          <div className="space-y-2">
-            <Label htmlFor="type">Type</Label>
-            <Select value={type} onValueChange={(value: "income" | "expense") => setType(value)}>
-              <SelectTrigger>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="income">Income</SelectItem>
-                <SelectItem value="expense">Expense</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
+          {allowIncome && (
+            <div className="space-y-2">
+              <Label htmlFor="type">Type</Label>
+              <Select value={type} onValueChange={(value: "income" | "expense") => setType(value)}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="income">Income</SelectItem>
+                  <SelectItem value="expense">Expense</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          )}
 
           <div className="space-y-2">
             <Label htmlFor="category">Category</Label>

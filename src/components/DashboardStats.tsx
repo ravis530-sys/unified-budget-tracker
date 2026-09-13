@@ -29,6 +29,8 @@ interface Stats {
   allocatedAmount: number;
   savedForNextMonth: number;
   utilizedExpenses: number;
+  totalReimbursed: number;
+  pendingReimbursement: number;
 }
 
 interface DashboardStatsProps {
@@ -48,6 +50,8 @@ const DashboardStats = ({ scope, selectedMonth = new Date() }: DashboardStatsPro
     allocatedAmount: 0,
     savedForNextMonth: 0,
     utilizedExpenses: 0,
+    totalReimbursed: 0,
+    pendingReimbursement: 0,
   });
   const [loading, setLoading] = useState(true);
   const [showAllocations, setShowAllocations] = useState(false);
@@ -137,7 +141,7 @@ const DashboardStats = ({ scope, selectedMonth = new Date() }: DashboardStatsPro
       // Fetch expenses from selected month
       let currentExpensesQuery = supabase
         .from("transactions")
-        .select("amount, category, payment_method")
+        .select("id, amount, category, payment_method, tag")
         .eq("type", "expense")
         .gte("transaction_date", currentMonthStart)
         .lte("transaction_date", currentMonthEnd);
@@ -149,6 +153,55 @@ const DashboardStats = ({ scope, selectedMonth = new Date() }: DashboardStatsPro
       }
 
       const { data: currentExpenses } = await currentExpensesQuery;
+
+      // Fetch ALL reimbursement incomes (income tagged paid_back:<expense_id>)
+      let reimbursementQuery = supabase
+        .from("transactions")
+        .select("amount, tag")
+        .eq("type", "income")
+        .like("tag", "paid_back:%");
+
+      if (scope === "individual") {
+        reimbursementQuery = reimbursementQuery.eq("user_id", user.id).is("household_id", null);
+      } else {
+        reimbursementQuery = reimbursementQuery.eq("household_id", householdId);
+      }
+
+      const { data: reimbursementIncomes } = await reimbursementQuery;
+
+      // Build a map: expenseId -> total reimbursed amount
+      const reimbursedByExpenseId: Record<string, number> = {};
+      reimbursementIncomes?.forEach(inc => {
+        const expId = inc.tag?.replace("paid_back:", "");
+        if (expId) {
+          reimbursedByExpenseId[expId] = (reimbursedByExpenseId[expId] || 0) + Number(inc.amount);
+        }
+      });
+
+      // Compute reimbursement amounts for current month expenses only
+      const currentMonthExpenseIds = new Set(currentExpenses?.map((e: any) => e.id) || []);
+      let totalReimbursedThisMonth = 0;
+      let pendingReimbursement = 0;
+
+      currentExpenses?.forEach((exp: any) => {
+        if (exp.tag === "paid_back" && exp.category !== "Credit Card Bill") {
+          const expAmt = Number(exp.amount);
+          const reimbursed = reimbursedByExpenseId[exp.id] || 0;
+          const capped = Math.min(reimbursed, expAmt);
+          totalReimbursedThisMonth += capped;
+          if (reimbursed < expAmt) {
+            pendingReimbursement += expAmt - reimbursed;
+          }
+        }
+      });
+
+      // Also check expenses from previous months that might have reimbursements now
+      // (already excluded from current month set)
+      Object.entries(reimbursedByExpenseId).forEach(([expId, reimbursedAmt]) => {
+        if (!currentMonthExpenseIds.has(expId)) {
+          // reimbursement income for a past expense — doesn't affect current month total expenses
+        }
+      });
 
       // Fetch current month earnings
       let currentEarningsQuery = supabase
@@ -243,9 +296,11 @@ const DashboardStats = ({ scope, selectedMonth = new Date() }: DashboardStatsPro
       const totalSaved = totalPreviousEarnings - totalPreviousExpenses - totalPreviousInvestments;
 
       // Actual totals for Net Balance (excludes Credit Card Bill category to avoid double-counting)
-      const totalCurrentExpensesActual = currentExpenses
+      // Subtract reimbursed amounts from total expenses — reimbursed expenses are effectively cancelled out
+      const totalCurrentExpensesRaw = currentExpenses
         ?.filter((t: any) => t.category !== "Credit Card Bill")
         .reduce((sum, t) => sum + Number(t.amount), 0) || 0;
+      const totalCurrentExpensesActual = Math.max(0, totalCurrentExpensesRaw - totalReimbursedThisMonth);
       const totalCurrentEarningsActual = currentEarningsData?.reduce((sum, t) => sum + Number(t.amount), 0) || 0;
       const totalCurrentInvestments = currentInvestments?.reduce((sum, t) => sum + Number(t.amount), 0) || 0;
 
@@ -381,6 +436,8 @@ const DashboardStats = ({ scope, selectedMonth = new Date() }: DashboardStatsPro
         allocatedAmount: totalAllocated,
         savedForNextMonth,
         utilizedExpenses,
+        totalReimbursed: totalReimbursedThisMonth,
+        pendingReimbursement,
       });
     } catch (error) {
       console.error("Error fetching stats:", error);
@@ -521,7 +578,18 @@ const DashboardStats = ({ scope, selectedMonth = new Date() }: DashboardStatsPro
             <div className="text-2xl font-bold text-destructive">
               {formatCurrency(stats.totalExpenses)}
             </div>
-            <p className="text-xs text-muted-foreground mt-1">This month</p>
+            {stats.totalReimbursed > 0 && (
+              <p className="text-xs text-emerald-600 dark:text-emerald-400 mt-0.5 font-medium">
+                −{formatCurrency(stats.totalReimbursed)} reimbursed
+              </p>
+            )}
+            {stats.pendingReimbursement > 0 ? (
+              <p className="text-xs text-amber-600 dark:text-amber-400 mt-0.5 font-medium">
+                {formatCurrency(stats.pendingReimbursement)} pending
+              </p>
+            ) : (
+              <p className="text-xs text-muted-foreground mt-1">This month</p>
+            )}
           </CardContent>
         </Card>
 

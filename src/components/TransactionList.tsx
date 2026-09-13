@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { format, startOfMonth, endOfMonth } from "date-fns";
-import { TrendingUp, TrendingDown, Pencil, Trash2, RotateCcw } from "lucide-react";
+import { TrendingUp, TrendingDown, Pencil, Trash2, RotateCcw, Clock } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import {
@@ -46,6 +46,8 @@ const TransactionList = ({ limit, onEdit, scope, selectedMonth, type, onDataLoad
   const [loading, setLoading] = useState(true);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [transactionToDelete, setTransactionToDelete] = useState<Transaction | null>(null);
+  // Map of expenseId -> total reimbursed amount (for paid_back expenses)
+  const [reimbursedMap, setReimbursedMap] = useState<Record<string, number>>({});
 
   useEffect(() => {
     fetchTransactions();
@@ -113,6 +115,36 @@ const TransactionList = ({ limit, onEdit, scope, selectedMonth, type, onDataLoad
       const results = transactionsWithProfiles || [];
       setTransactions(results);
       if (onDataLoaded) onDataLoaded(results.length > 0);
+
+      // For expense lists, fetch reimbursement incomes to know how much has been paid back
+      if (type === "expense" && results.length > 0) {
+        const expenseIds = results.filter(t => t.tag === "paid_back").map(t => t.id);
+        if (expenseIds.length > 0) {
+          let reimQuery = supabase
+            .from("transactions")
+            .select("amount, tag")
+            .eq("type", "income")
+            .like("tag", "paid_back:%");
+
+          if (scope === "individual") {
+            reimQuery = reimQuery.eq("user_id", user.id).is("household_id", null);
+          } else {
+            reimQuery = reimQuery.eq("household_id", householdId);
+          }
+
+          const { data: reimIncomes } = await reimQuery;
+          const map: Record<string, number> = {};
+          reimIncomes?.forEach(inc => {
+            const expId = inc.tag?.replace("paid_back:", "");
+            if (expId && expenseIds.includes(expId)) {
+              map[expId] = (map[expId] || 0) + Number(inc.amount);
+            }
+          });
+          setReimbursedMap(map);
+        } else {
+          setReimbursedMap({});
+        }
+      }
     } catch (error) {
       console.error("Error fetching transactions:", error);
     } finally {
@@ -263,12 +295,33 @@ const TransactionList = ({ limit, onEdit, scope, selectedMonth, type, onDataLoad
                     Cash
                   </span>
                 )}
-                {transaction.tag === "paid_back" && (
-                  <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[10px] font-semibold bg-blue-100 text-blue-700 dark:bg-blue-950/40 dark:text-blue-400 border border-blue-200/50 dark:border-blue-900/30">
-                    <RotateCcw className="h-2.5 w-2.5" />
-                    Paid Back
-                  </span>
-                )}
+                {transaction.tag === "paid_back" && (() => {
+                  const expAmt = Number(transaction.amount);
+                  const reimbursed = reimbursedMap[transaction.id] || 0;
+                  const pending = Math.max(0, expAmt - reimbursed);
+                  if (reimbursed >= expAmt) {
+                    return (
+                      <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[10px] font-semibold bg-emerald-100 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-400 border border-emerald-200/50 dark:border-emerald-900/30">
+                        <RotateCcw className="h-2.5 w-2.5" />
+                        Fully Reimbursed
+                      </span>
+                    );
+                  } else if (reimbursed > 0) {
+                    return (
+                      <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[10px] font-semibold bg-amber-100 text-amber-700 dark:bg-amber-950/40 dark:text-amber-400 border border-amber-200/50 dark:border-amber-900/30">
+                        <Clock className="h-2.5 w-2.5" />
+                        ₹{pending.toLocaleString("en-IN")} pending
+                      </span>
+                    );
+                  } else {
+                    return (
+                      <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[10px] font-semibold bg-blue-100 text-blue-700 dark:bg-blue-950/40 dark:text-blue-400 border border-blue-200/50 dark:border-blue-900/30">
+                        <RotateCcw className="h-2.5 w-2.5" />
+                        Paid Back
+                      </span>
+                    );
+                  }
+                })()}
                 {transaction.tag?.startsWith("paid_back:") && (
                   <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[10px] font-semibold bg-emerald-100 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-400 border border-emerald-200/50 dark:border-emerald-900/30">
                     <RotateCcw className="h-2.5 w-2.5" />

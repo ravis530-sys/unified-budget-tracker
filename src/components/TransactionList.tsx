@@ -118,7 +118,9 @@ const TransactionList = ({ limit, onEdit, scope, selectedMonth, type, onDataLoad
 
       // For expense lists, fetch reimbursement incomes to know how much has been paid back
       if (type === "expense" && results.length > 0) {
-        const expenseIds = results.filter(t => t.tag === "paid_back").map(t => t.id);
+        const expenseIds = results
+          .filter(t => t.tag === "paid_back" || t.tag === "paid_back_closed")
+          .map(t => t.id);
         if (expenseIds.length > 0) {
           let reimQuery = supabase
             .from("transactions")
@@ -321,6 +323,29 @@ const TransactionList = ({ limit, onEdit, scope, selectedMonth, type, onDataLoad
                       </span>
                     );
                   }
+                })()}
+                {transaction.tag === "paid_back_closed" && (() => {
+                  const expAmt = Number(transaction.amount);
+                  const reimbursed = reimbursedMap[transaction.id] || 0;
+                  const pending = Math.max(0, expAmt - reimbursed);
+                  if (reimbursed >= expAmt) {
+                    // Closed AND fully reimbursed
+                    return (
+                      <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[10px] font-semibold bg-emerald-100 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-400 border border-emerald-200/50 dark:border-emerald-900/30">
+                        <RotateCcw className="h-2.5 w-2.5" />
+                        Fully Reimbursed
+                      </span>
+                    );
+                  }
+                  // Closed with remaining balance intentionally written off — show as normal expense charge
+                  return (
+                    <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[10px] font-semibold bg-slate-100 text-slate-600 dark:bg-slate-800/60 dark:text-slate-400 border border-slate-200/60 dark:border-slate-700/40">
+                      <RotateCcw className="h-2.5 w-2.5" />
+                      {reimbursed > 0
+                        ? `₹${pending.toLocaleString("en-IN")} as expense`
+                        : "As Expense"}
+                    </span>
+                  );
                 })()}
                 {transaction.tag?.startsWith("paid_back:") && (
                   <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[10px] font-semibold bg-emerald-100 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-400 border border-emerald-200/50 dark:border-emerald-900/30">

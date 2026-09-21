@@ -184,6 +184,8 @@ const DashboardStats = ({ scope, selectedMonth = new Date() }: DashboardStatsPro
       let pendingReimbursement = 0;
 
       currentExpenses?.forEach((exp: any) => {
+        // Only "paid_back" expenses can have pending reimbursement.
+        // "paid_back_closed" expenses have their waived balance counted as a normal expense — not pending.
         if (exp.tag === "paid_back" && exp.category !== "Credit Card Bill") {
           const expAmt = Number(exp.amount);
           const reimbursed = reimbursedByExpenseId[exp.id] || 0;
@@ -192,6 +194,13 @@ const DashboardStats = ({ scope, selectedMonth = new Date() }: DashboardStatsPro
           if (reimbursed < expAmt) {
             pendingReimbursement += expAmt - reimbursed;
           }
+        } else if (exp.tag === "paid_back_closed" && exp.category !== "Credit Card Bill") {
+          // Closed expenses: only count the actually reimbursed portion — waived balance stays as expense.
+          const expAmt = Number(exp.amount);
+          const reimbursed = reimbursedByExpenseId[exp.id] || 0;
+          const capped = Math.min(reimbursed, expAmt);
+          totalReimbursedThisMonth += capped;
+          // No pendingReimbursement contribution — the remainder is treated as a regular expense charge.
         }
       });
 

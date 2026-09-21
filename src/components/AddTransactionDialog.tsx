@@ -34,6 +34,7 @@ interface PaidBackExpense {
   amount: number;
   transaction_date: string;
   remarks: string | null;
+  reimbursed: number; // total already reimbursed via income transactions
 }
 
 interface AddTransactionDialogProps {
@@ -61,6 +62,7 @@ const AddTransactionDialog = ({ open, onOpenChange, onSuccess, transaction, scop
   const [isPaidBack, setIsPaidBack] = useState(false);
   const [paidBackAgainstId, setPaidBackAgainstId] = useState("");
   const [paidBackExpenses, setPaidBackExpenses] = useState<PaidBackExpense[]>([]);
+  const [noFurtherRefund, setNoFurtherRefund] = useState(false);
 
   // Fetch budget categories when type changes to expense
   useEffect(() => {
@@ -91,7 +93,7 @@ const AddTransactionDialog = ({ open, onOpenChange, onSuccess, transaction, scop
         householdId = membership?.household_id || null;
       }
 
-      // Fetch expenses tagged as "paid_back"
+      // Fetch expenses tagged as "paid_back" (exclude paid_back_closed — those are settled)
       let expQuery = supabase
         .from("transactions")
         .select("id, category, amount, transaction_date, remarks")
@@ -111,10 +113,10 @@ const AddTransactionDialog = ({ open, onOpenChange, onSuccess, transaction, scop
         return;
       }
 
-      // Fetch income transactions that are already linked to paid-back expenses
+      // Fetch all income transactions linked to any of these expenses
       let incQuery = supabase
         .from("transactions")
-        .select("tag")
+        .select("tag, amount")
         .eq("type", "income")
         .like("tag", "paid_back:%");
 
@@ -126,22 +128,34 @@ const AddTransactionDialog = ({ open, onOpenChange, onSuccess, transaction, scop
 
       const { data: linkedIncomes } = await incQuery;
 
-      // Extract already-linked expense IDs
-      const linkedExpenseIds = new Set(
-        (linkedIncomes || []).map(inc => inc.tag?.replace("paid_back:", "")).filter(Boolean)
-      );
-
-      // Filter out already-linked expenses (but keep the one currently being edited)
-      const unlinked = taggedExpenses.filter(exp => {
-        if (linkedExpenseIds.has(exp.id)) {
-          // If we're editing and this income is linked to this expense, still show it
-          if (transaction && transaction.tag === `paid_back:${exp.id}`) return true;
-          return false;
+      // Build a map of expenseId -> total reimbursed amount
+      const reimbursedTotals: Record<string, number> = {};
+      (linkedIncomes || []).forEach(inc => {
+        const expId = inc.tag?.replace("paid_back:", "");
+        if (expId) {
+          reimbursedTotals[expId] = (reimbursedTotals[expId] || 0) + Number(inc.amount);
         }
-        return true;
       });
 
-      setPaidBackExpenses(unlinked as PaidBackExpense[]);
+      // Keep expenses that are NOT fully reimbursed yet.
+      // If we're editing an income that is already linked to an expense, always show that expense.
+      const visible = taggedExpenses
+        .filter(exp => {
+          const reimbursed = reimbursedTotals[exp.id] || 0;
+          const fullyReimbursed = reimbursed >= Number(exp.amount);
+          if (fullyReimbursed) {
+            // Still show if this is the expense currently linked to the income being edited
+            if (transaction && transaction.tag === `paid_back:${exp.id}`) return true;
+            return false;
+          }
+          return true;
+        })
+        .map(exp => ({
+          ...exp,
+          reimbursed: reimbursedTotals[exp.id] || 0,
+        }));
+
+      setPaidBackExpenses(visible as PaidBackExpense[]);
     } catch (error) {
       console.error("Error fetching paid-back expenses:", error);
     }
@@ -222,12 +236,15 @@ const AddTransactionDialog = ({ open, onOpenChange, onSuccess, transaction, scop
       if (transaction.tag === "paid_back") {
         setIsPaidBack(true);
         setPaidBackAgainstId("");
+        setNoFurtherRefund(false);
       } else if (transaction.tag?.startsWith("paid_back:")) {
         setIsPaidBack(false);
         setPaidBackAgainstId(transaction.tag.replace("paid_back:", ""));
+        setNoFurtherRefund(false);
       } else {
         setIsPaidBack(false);
         setPaidBackAgainstId("");
+        setNoFurtherRefund(false);
       }
     } else if (!open) {
       // Reset form when dialog closes
@@ -243,6 +260,7 @@ const AddTransactionDialog = ({ open, onOpenChange, onSuccess, transaction, scop
       setPaymentMethod("upi");
       setIsPaidBack(false);
       setPaidBackAgainstId("");
+      setNoFurtherRefund(false);
     }
   }, [transaction, open]);
 
@@ -326,6 +344,20 @@ const AddTransactionDialog = ({ open, onOpenChange, onSuccess, transaction, scop
         toast.success("Transaction added successfully");
       }
 
+      // If the user flagged "no further refund" on a partial reimbursement,
+      // update the linked expense's tag to paid_back_closed so it stops showing as pending.
+      if (
+        type === "income" &&
+        noFurtherRefund &&
+        paidBackAgainstId &&
+        paidBackAgainstId !== "none"
+      ) {
+        await supabase
+          .from("transactions")
+          .update({ tag: "paid_back_closed" })
+          .eq("id", paidBackAgainstId);
+      }
+
       // Reset form
       setCategory("");
       setSubCategory("");
@@ -337,6 +369,7 @@ const AddTransactionDialog = ({ open, onOpenChange, onSuccess, transaction, scop
       setPaymentMethod("upi");
       setIsPaidBack(false);
       setPaidBackAgainstId("");
+      setNoFurtherRefund(false);
 
       onSuccess();
     } catch (error: any) {
@@ -366,6 +399,7 @@ const AddTransactionDialog = ({ open, onOpenChange, onSuccess, transaction, scop
           setSubCategory("");
           setIsPaidBack(false);
           setPaidBackAgainstId("");
+          setNoFurtherRefund(false);
         }}>
           <TabsList className="grid w-full grid-cols-3">
             <TabsTrigger value="income">Income</TabsTrigger>
@@ -492,25 +526,74 @@ const AddTransactionDialog = ({ open, onOpenChange, onSuccess, transaction, scop
                     <RotateCcw className="h-3.5 w-3.5 text-blue-500" />
                     Paid Back Against Expense (Optional)
                   </Label>
-                  <Select value={paidBackAgainstId} onValueChange={setPaidBackAgainstId}>
+                  <Select
+                    value={paidBackAgainstId}
+                    onValueChange={(val) => {
+                      setPaidBackAgainstId(val);
+                      // Reset the "no further refund" flag when user picks a different expense
+                      setNoFurtherRefund(false);
+                    }}
+                  >
                     <SelectTrigger>
                       <SelectValue placeholder="Select expense to reimburse..." />
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="none">None</SelectItem>
-                      {paidBackExpenses.map((exp) => (
-                        <SelectItem key={exp.id} value={exp.id}>
-                          <div className="flex items-center gap-2">
-                            <span>{exp.category}</span>
-                            <span className="text-muted-foreground">•</span>
-                            <span className="text-muted-foreground">₹{Number(exp.amount).toLocaleString()}</span>
-                            <span className="text-muted-foreground">•</span>
-                            <span className="text-xs text-muted-foreground">{format(new Date(exp.transaction_date), "MMM d, yyyy")}</span>
-                          </div>
-                        </SelectItem>
-                      ))}
+                      {paidBackExpenses.map((exp) => {
+                        const pending = Math.max(0, Number(exp.amount) - exp.reimbursed);
+                        const isPartial = exp.reimbursed > 0;
+                        return (
+                          <SelectItem key={exp.id} value={exp.id}>
+                            <div className="flex items-center gap-2">
+                              <span>{exp.category}</span>
+                              <span className="text-muted-foreground">•</span>
+                              <span className="text-muted-foreground">₹{Number(exp.amount).toLocaleString()}</span>
+                              <span className="text-muted-foreground">•</span>
+                              <span className="text-xs text-muted-foreground">{format(new Date(exp.transaction_date), "MMM d, yyyy")}</span>
+                              {isPartial && (
+                                <>
+                                  <span className="text-muted-foreground">•</span>
+                                  <span className="text-xs font-semibold text-amber-600 dark:text-amber-400">
+                                    ₹{pending.toLocaleString("en-IN")} pending
+                                  </span>
+                                </>
+                              )}
+                            </div>
+                          </SelectItem>
+                        );
+                      })}
                     </SelectContent>
                   </Select>
+
+                  {/* "No further refund" checkbox — shown only when a partially-reimbursed expense is selected */}
+                  {(() => {
+                    const selectedExp = paidBackExpenses.find(e => e.id === paidBackAgainstId);
+                    const isPartiallyReimbursed = selectedExp && selectedExp.reimbursed > 0 && selectedExp.reimbursed < Number(selectedExp.amount);
+                    if (!isPartiallyReimbursed) return null;
+                    const stillPending = Math.max(0, Number(selectedExp.amount) - selectedExp.reimbursed);
+                    return (
+                      <div className="flex items-start gap-2 mt-2 pt-2 border-t border-dashed">
+                        <Checkbox
+                          id="no-further-refund"
+                          checked={noFurtherRefund}
+                          onCheckedChange={(checked) => setNoFurtherRefund(checked === true)}
+                          className="mt-0.5"
+                        />
+                        <div className="flex flex-col gap-0.5">
+                          <Label
+                            htmlFor="no-further-refund"
+                            className="flex items-center gap-1.5 cursor-pointer text-sm font-medium text-orange-700 dark:text-orange-400"
+                          >
+                            <RotateCcw className="h-3 w-3" />
+                            No further refund expected
+                          </Label>
+                          <p className="text-xs text-muted-foreground">
+                            Marks the ₹{stillPending.toLocaleString("en-IN")} balance as closed — expense won't show as pending anymore
+                          </p>
+                        </div>
+                      </div>
+                    );
+                  })()}
                 </div>
               )}
 

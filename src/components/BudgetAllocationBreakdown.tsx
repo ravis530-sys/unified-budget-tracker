@@ -75,8 +75,8 @@ const BudgetAllocationBreakdown = ({ selectedMonth, type, scope, onDataLoaded }:
         .from("transactions")
         .select("*")
         .eq("type", type)
-        .gte("transaction_date", monthStart.toISOString())
-        .lte("transaction_date", monthEnd.toISOString());
+        .gte("transaction_date", monthStartStr)
+        .lte("transaction_date", monthEndStr);
 
       if (scope === "individual") {
         transactionQuery = transactionQuery.eq("user_id", user.id).is("household_id", null);

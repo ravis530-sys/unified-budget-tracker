@@ -32,6 +32,8 @@ const BudgetCategoryList = ({ type, selectedMonth, viewMode = "monthly", onUpdat
   const [loading, setLoading] = useState(true);
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [selectedBudget, setSelectedBudget] = useState<Budget | null>(null);
+  // Default: hide done goals from previous months; user can reveal them
+  const [showOldDone, setShowOldDone] = useState(false);
 
   useEffect(() => {
     fetchBudgets();
@@ -102,12 +104,15 @@ const BudgetCategoryList = ({ type, selectedMonth, viewMode = "monthly", onUpdat
         processedData = budgetsWithCarryForward;
       }
 
-      // Sort: Pending (not done) first
+      // Exclude auto-created allocation stubs — they are not real user-planned goals
+      processedData = processedData.filter(b => b.interval !== 'allocation_only');
+
+      // Sort: Pending first; within same status group, newer start_date first
       processedData.sort((a, b) => {
         const aDone = a.interval === 'done';
         const bDone = b.interval === 'done';
-        if (aDone === bDone) return 0;
-        return aDone ? 1 : -1;
+        if (aDone !== bDone) return aDone ? 1 : -1;
+        return b.start_date.localeCompare(a.start_date);
       });
 
       setBudgets(processedData);
@@ -165,7 +170,15 @@ const BudgetCategoryList = ({ type, selectedMonth, viewMode = "monthly", onUpdat
     return <div className="text-sm text-muted-foreground">Loading...</div>;
   }
 
-  if (budgets.length === 0) {
+  // In goals viewMode: split into visible (pending + done this month) and older-done (past months)
+  const currentMonthStart = format(startOfMonth(new Date()), 'yyyy-MM-dd');
+  const isOldDone = (b: Budget) => b.interval === 'done' && b.start_date < currentMonthStart;
+
+  const visibleBudgets = viewMode === 'goals' ? budgets.filter(b => !isOldDone(b)) : budgets;
+  const oldDoneBudgets = viewMode === 'goals' ? budgets.filter(b => isOldDone(b)) : [];
+  const displayBudgets = showOldDone ? budgets : visibleBudgets;
+
+  if (displayBudgets.length === 0 && oldDoneBudgets.length === 0) {
     return (
       <div className="text-sm text-muted-foreground text-center py-4">
         No {type} items found
@@ -173,68 +186,84 @@ const BudgetCategoryList = ({ type, selectedMonth, viewMode = "monthly", onUpdat
     );
   }
 
+  const renderBudgetRow = (budget: Budget) => {
+    const isDone = budget.interval === 'done';
+    return (
+      <div
+        key={budget.id}
+        className={`flex items-center justify-between p-3 rounded-lg border ${isDone ? 'bg-muted/30 opacity-70' : 'bg-muted/50'}`}
+      >
+        <div>
+          <div className="flex items-center gap-2">
+            <p className={`font-medium ${isDone ? 'line-through text-muted-foreground' : ''}`}>{budget.category}</p>
+            {viewMode === 'goals' && (
+              <Badge variant={isDone ? "secondary" : "default"} className="text-[10px] py-0 h-5">
+                {isDone ? 'Done' : 'Pending'}
+              </Badge>
+            )}
+          </div>
+          <p className="text-sm text-muted-foreground">
+            ₹{Number(budget.planned_amount).toLocaleString()}
+          </p>
+          <p className="text-xs text-muted-foreground capitalize">
+            {format(new Date(budget.start_date), "MMM d, yyyy")}
+            {budget.end_date ? ` - ${format(new Date(budget.end_date), "MMM d, yyyy")}` : ""}
+          </p>
+          {viewMode === 'monthly' && budget.carry_forward && budget.carry_forward > 0 ? (
+            <p className="text-xs text-green-600 font-medium mt-1">
+              + ₹{budget.carry_forward.toLocaleString()} carry forward
+            </p>
+          ) : null}
+        </div>
+        <div className="flex gap-1">
+          {viewMode === 'goals' && (
+            <Button
+              variant="ghost"
+              size="icon"
+              title={isDone ? "Mark as Pending" : "Mark as Done"}
+              onClick={() => toggleStatus(budget)}
+            >
+              {isDone ? <XCircle className="h-4 w-4 text-orange-500" /> : <CheckCircle2 className="h-4 w-4 text-green-600" />}
+            </Button>
+          )}
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={() => handleEdit(budget)}
+          >
+            <Pencil className="h-4 w-4" />
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={() => handleDelete(budget.id)}
+          >
+            <Trash2 className="h-4 w-4" />
+          </Button>
+        </div>
+      </div>
+    );
+  };
+
   return (
     <>
       <div className="space-y-2">
-        {budgets.map((budget) => {
-          const isDone = budget.interval === 'done';
-          return (
-            <div
-              key={budget.id}
-              className={`flex items-center justify-between p-3 rounded-lg border ${isDone ? 'bg-muted/30 opacity-70' : 'bg-muted/50'}`}
-            >
-              <div>
-                <div className="flex items-center gap-2">
-                  <p className={`font-medium ${isDone ? 'line-through text-muted-foreground' : ''}`}>{budget.category}</p>
-                  {viewMode === 'goals' && (
-                    <Badge variant={isDone ? "secondary" : "default"} className="text-[10px] py-0 h-5">
-                      {isDone ? 'Done' : 'Pending'}
-                    </Badge>
-                  )}
-                </div>
-                <p className="text-sm text-muted-foreground">
-                  ₹{Number(budget.planned_amount).toLocaleString()}
-                </p>
-                <p className="text-xs text-muted-foreground capitalize">
-                  {format(new Date(budget.start_date), "MMM d, yyyy")}
-                  {budget.end_date ? ` - ${format(new Date(budget.end_date), "MMM d, yyyy")}` : ""}
-                </p>
-                {viewMode === 'monthly' && budget.carry_forward && budget.carry_forward > 0 ? (
-                  <p className="text-xs text-green-600 font-medium mt-1">
-                    + ₹{budget.carry_forward.toLocaleString()} carry forward
-                  </p>
-                ) : null}
-              </div>
-              <div className="flex gap-1">
-                {viewMode === 'goals' && (
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    title={isDone ? "Mark as Pending" : "Mark as Done"}
-                    onClick={() => toggleStatus(budget)}
-                  >
-                    {isDone ? <XCircle className="h-4 w-4 text-orange-500" /> : <CheckCircle2 className="h-4 w-4 text-green-600" />}
-                  </Button>
-                )}
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  onClick={() => handleEdit(budget)}
-                >
-                  <Pencil className="h-4 w-4" />
-                </Button>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  onClick={() => handleDelete(budget.id)}
-                >
-                  <Trash2 className="h-4 w-4" />
-                </Button>
-              </div>
-            </div>
-          )
-        })}
+        {displayBudgets.map(renderBudgetRow)}
       </div>
+
+      {/* Toggle to reveal/hide older completed goals — only in goals viewMode */}
+      {viewMode === 'goals' && oldDoneBudgets.length > 0 && (
+        <div className="mt-3 pt-2 border-t border-dashed border-muted-foreground/20 flex justify-center">
+          <button
+            onClick={() => setShowOldDone(prev => !prev)}
+            className="text-xs text-muted-foreground hover:text-foreground transition-colors underline underline-offset-2 decoration-dotted"
+          >
+            {showOldDone
+              ? `▲ Hide ${oldDoneBudgets.length} completed goal${oldDoneBudgets.length !== 1 ? 's' : ''} from previous months`
+              : `▼ Show ${oldDoneBudgets.length} completed goal${oldDoneBudgets.length !== 1 ? 's' : ''} from previous months`}
+          </button>
+        </div>
+      )}
 
       <EditBudgetDialog
         open={editDialogOpen}

@@ -163,12 +163,12 @@ const GoalAllocation = () => {
                     expenseBudgetTotalMap[ebId].allocated += Number(alloc.allocated_amount);
                 });
 
-                // Check each and mark as done if fully utilized
+                // Check each and mark as done if fully utilized (skip allocation_only stubs — they are not real goals)
                 await Promise.all(
                     Object.entries(expenseBudgetTotalMap).map(async ([budgetId, { category, allocated }]) => {
                         const utilized = txnCatMap[category] || 0;
                         if (utilized >= allocated) {
-                            await supabase.from("monthly_budgets").update({ interval: 'done' }).eq("id", budgetId).neq("interval", "done");
+                            await supabase.from("monthly_budgets").update({ interval: 'done' }).eq("id", budgetId).neq("interval", "done").neq("interval", "allocation_only");
                         }
                     })
                 );
@@ -396,7 +396,9 @@ const GoalAllocation = () => {
                         start_date: monthStr,
                         type: "expense",
                         planned_amount: 0,
-                        interval: "pending",
+                        // "allocation_only" marks this as an auto-created stub (not a user-planned goal)
+                        // so it won't show up in Expense Goals or Goal Funding Progress
+                        interval: "allocation_only",
                         household_id: scope === "family" && household ? household.id : null
                     })
                     .select()

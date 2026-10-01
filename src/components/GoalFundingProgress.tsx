@@ -63,8 +63,9 @@ const GoalFundingProgress = ({ scope, selectedMonth, onDataLoaded }: GoalFunding
 
             const { data: rawGoals } = await budgetQuery;
 
-            // Client-side filter: goal must overlap with selected month
+            // Client-side filter: goal must overlap with selected month AND not be an auto-created allocation stub
             const activeGoals = (rawGoals || []).filter(g => {
+                if (g.interval === 'allocation_only') return false; // auto-created stub, not a real planned goal
                 if (!g.end_date) return true;         // open-ended goal: always active
                 return g.end_date >= monthStart;      // end_date on or after month start
             });

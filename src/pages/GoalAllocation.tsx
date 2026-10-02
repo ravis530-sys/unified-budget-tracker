@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { format, endOfMonth, startOfMonth } from "date-fns";
-import { ArrowLeft, Plus, Target, Banknote, Pencil, Check, X, Trash2 } from "lucide-react";
+import { ArrowLeft, Plus, Target, Banknote, Pencil, Check, X, Trash2, TrendingUp } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -540,6 +540,16 @@ const GoalAllocation = () => {
                             <p className="text-sm text-white/70">Allocate earnings to your goals</p>
                         </div>
                     </div>
+
+                    <Button
+                        variant="outline"
+                        size="sm"
+                        className="text-white border-white/20 bg-white/5 hover:bg-white/10 hover:text-white text-xs gap-1.5"
+                        onClick={() => navigate("/investment-allocation")}
+                    >
+                        <TrendingUp className="h-3.5 w-3.5 text-emerald-400" />
+                        Investment Sub-Allocation
+                    </Button>
                 </div>
             </header>
 
@@ -683,6 +693,16 @@ const GoalAllocation = () => {
                                                         <p className="text-xs text-muted-foreground">
                                                             {alloc.income_budget?.interval} to {alloc.expense_budget?.interval}
                                                         </p>
+                                                        {INVESTMENT_CATEGORIES.includes(alloc.expense_budget?.category || "") && (
+                                                            <Button
+                                                                variant="link"
+                                                                size="sm"
+                                                                className="h-auto p-0 text-xs text-primary font-medium hover:underline inline-flex items-center gap-1"
+                                                                onClick={() => navigate(`/investment-allocation?category=${encodeURIComponent(alloc.expense_budget?.category || "")}`)}
+                                                            >
+                                                                Sub-allocate funds →
+                                                            </Button>
+                                                        )}
                                                     </div>
                                                     <div className="flex items-center gap-2">
                                                         {editingAllocId === alloc.id ? (

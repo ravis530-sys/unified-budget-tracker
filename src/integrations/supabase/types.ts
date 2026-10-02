@@ -296,6 +296,107 @@ export type Database = {
           },
         ]
       }
+      investment_instruments: {
+        Row: {
+          category: string
+          code_or_ticker: string | null
+          created_at: string
+          household_id: string | null
+          id: string
+          is_active: boolean
+          name: string
+          notes: string | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          category: string
+          code_or_ticker?: string | null
+          created_at?: string
+          household_id?: string | null
+          id?: string
+          is_active?: boolean
+          name: string
+          notes?: string | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          category?: string
+          code_or_ticker?: string | null
+          created_at?: string
+          household_id?: string | null
+          id?: string
+          is_active?: boolean
+          name?: string
+          notes?: string | null
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "investment_instruments_household_id_fkey"
+            columns: ["household_id"]
+            isOneToOne: false
+            referencedRelation: "households"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      investment_sub_allocations: {
+        Row: {
+          amount: number
+          category: string
+          created_at: string
+          household_id: string | null
+          id: string
+          instrument_id: string
+          month_year: string
+          notes: string | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          amount?: number
+          category: string
+          created_at?: string
+          household_id?: string | null
+          id?: string
+          instrument_id: string
+          month_year: string
+          notes?: string | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          amount?: number
+          category?: string
+          created_at?: string
+          household_id?: string | null
+          id?: string
+          instrument_id?: string
+          month_year?: string
+          notes?: string | null
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "investment_sub_allocations_instrument_id_fkey"
+            columns: ["instrument_id"]
+            isOneToOne: false
+            referencedRelation: "investment_instruments"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "investment_sub_allocations_household_id_fkey"
+            columns: ["household_id"]
+            isOneToOne: false
+            referencedRelation: "households"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Views: {
       [_ in never]: never

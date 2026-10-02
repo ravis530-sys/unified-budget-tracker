@@ -7,7 +7,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   LogOut, Wallet as WalletIcon, CalendarDays, Users, Target, BarChart2,
-  ChevronDown, ChevronRight, Receipt,
+  ChevronDown, ChevronRight, Receipt, TrendingUp,
 } from "lucide-react";
 import { toast } from "sonner";
 import { format, startOfWeek, endOfWeek, startOfQuarter, endOfQuarter, startOfYear, endOfYear,
@@ -275,6 +275,9 @@ const Reports = () => {
             </Button>
             <Button variant="ghost" size="icon" className="h-8 w-8 md:h-10 md:w-10 text-white hover:bg-white/10 hover:text-white" onClick={() => navigate("/goal-allocation")} title="Goal Allocation">
               <Target className="h-5 w-5" />
+            </Button>
+            <Button variant="ghost" size="icon" className="h-8 w-8 md:h-10 md:w-10 text-white hover:bg-white/10 hover:text-white" onClick={() => navigate("/investment-allocation")} title="Investment Sub-Allocation">
+              <TrendingUp className="h-5 w-5" />
             </Button>
             <Button variant="ghost" size="icon" className="h-8 w-8 md:h-10 md:w-10 text-white hover:bg-white/10 hover:text-white" onClick={() => navigate("/household-settings")} title="Family Settings">
               <Users className="h-5 w-5" />
